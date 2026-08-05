@@ -1,0 +1,14 @@
+.venv/
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.idea/
+.vscode/
+*.local.json
+captures/

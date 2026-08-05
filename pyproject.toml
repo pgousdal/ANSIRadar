@@ -1,4 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
-name='ansiradar'
-version='0.1.0'
-requires-python='>=3.11'
+name = "ansiradar"
+dynamic = ["version"]
+description = "Deterministic terminal snapshots of readsb/dump1090 aircraft data"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+dependencies = ["httpx>=0.27,<1"]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "hatchling>=1.25",
+  "mypy>=1.10",
+  "pytest>=8",
+  "ruff>=0.5",
+]
+
+[project.scripts]
+ansiradar = "ansiradar.cli:main"
+
+[tool.hatch.version]
+path = "src/ansiradar/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ansiradar"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["ansiradar"]
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["src"]
