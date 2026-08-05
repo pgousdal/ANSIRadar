@@ -27,7 +27,7 @@ def run_snapshot(*extra: str) -> int:
 def test_text_snapshot_and_stale_filter(capsys: pytest.CaptureFixture[str]) -> None:
     assert run_snapshot() == 0
     output = capsys.readouterr().out
-    assert "ANSIRadar 0.2.0" in output
+    assert "ANSIRadar 0.3.0" in output
     assert "Visible:           7" in output
     assert "Without position:  2" in output
     assert "SAS431" in output
@@ -129,7 +129,7 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as error:
         main(["--version"])
     assert error.value.code == 0
-    assert capsys.readouterr().out == "ANSIRadar 0.2.0\n"
+    assert capsys.readouterr().out == "ANSIRadar 0.3.0\n"
 
 
 def test_missing_receiver_is_usage_error(
@@ -141,3 +141,31 @@ def test_missing_receiver_is_usage_error(
         main(["snapshot", "--source", BASIC])
     assert error.value.code == 2
     assert "receiver latitude and longitude" in capsys.readouterr().err
+
+
+def test_radar_once_is_plain_deterministic_frame(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        main(
+            [
+                "radar",
+                "--source",
+                BASIC,
+                "--receiver-lat",
+                "58.3405",
+                "--receiver-lon",
+                "6.2812",
+                "--once",
+                "--charset",
+                "ascii",
+                "--color",
+                "never",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
+    assert "ANSIRadar 0.3.0" in output
+    assert "CALL" in output and "Rng 100nm" in output
+    assert "\x1b" not in output

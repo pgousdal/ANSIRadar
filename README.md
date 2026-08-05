@@ -1,8 +1,8 @@
 # ANSIRadar
 
-ANSIRadar turns readsb/dump1090 `aircraft.json` data into deterministic,
-80-column-friendly terminal snapshots. M1 is a read-only data adapter and snapshot
-CLI; it is not the future interactive radar display.
+ANSIRadar turns readsb/dump1090 `aircraft.json` data into deterministic terminal
+snapshots and an interactive 80x24-friendly ANSI polar radar. M2 adds the
+read-only radar UI; it does not implement BBS door protocols.
 
 ## Install
 
@@ -29,6 +29,10 @@ ansiradar snapshot --source http://localhost:8080/data/aircraft.json \
   --receiver-lat 58.3405 --receiver-lon 6.2812 --json
 
 ansiradar source-check --source tests/fixtures/readsb-basic.json
+
+ansiradar radar --source tests/fixtures/readsb-basic.json \
+  --receiver-lat 58.3405 --receiver-lon 6.2812 --once \
+  --charset ascii --color never
 ```
 
 `ANSIRADAR_SOURCE`, `ANSIRADAR_RECEIVER_LAT`, and `ANSIRADAR_RECEIVER_LON` can
@@ -54,4 +58,5 @@ aircraft data can be sensitive; avoid publishing local captures or exact private
 receiver locations.
 
 See [source setup](docs/readsb-source.md), [data model](docs/data-model.md), and
-[architecture](docs/architecture.md).
+[architecture](docs/architecture.md), [radar command](docs/radar-command.md),
+and [keyboard controls](docs/keyboard-controls.md).

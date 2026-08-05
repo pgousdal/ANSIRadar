@@ -4,12 +4,16 @@ import argparse
 import json
 import os
 import sys
+import time
 from collections.abc import Sequence
 from typing import Any
 
 from ansiradar import __version__
 from ansiradar.models import Aircraft, AircraftSnapshot, PositionedAircraft
 from ansiradar.radar.geo import coordinates_valid, distance_km, initial_bearing_deg
+from ansiradar.render.ansi import serialize_diff
+from ansiradar.render.buffer import ScreenBuffer
+from ansiradar.render.radar import RadarRenderOptions, render_radar
 from ansiradar.render.snapshot import render_snapshot
 from ansiradar.sources import (
     InvalidSourceData,
@@ -17,6 +21,9 @@ from ansiradar.sources import (
     SourceUnavailable,
     UnsupportedSource,
 )
+from ansiradar.terminal.capabilities import resolve_capabilities
+from ansiradar.terminal.input import read_key
+from ansiradar.terminal.session import TerminalSession
 
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -49,6 +56,24 @@ def _parser() -> argparse.ArgumentParser:
     check = subparsers.add_parser("source-check", help="validate a data source")
     check.add_argument("--source")
     check.add_argument("--json", action="store_true", dest="command_json")
+    radar = subparsers.add_parser("radar", help="interactive polar radar")
+    radar.add_argument("--source")
+    radar.add_argument("--receiver-lat", type=float)
+    radar.add_argument("--receiver-lon", type=float)
+    radar.add_argument("--range", type=float, default=100.0, dest="range_nm")
+    radar.add_argument("--refresh", type=float, default=2.0)
+    radar.add_argument("--max-age", type=float, default=60.0)
+    radar.add_argument("--units", choices=("metric", "aviation"), default="aviation")
+    radar.add_argument(
+        "--charset", choices=("ascii", "cp437", "unicode"), default="ascii"
+    )
+    radar.add_argument("--color", choices=("auto", "always", "never"), default="auto")
+    radar.add_argument("--trails", type=int, default=0)
+    radar.add_argument(
+        "--label", choices=("callsign", "icao", "none"), default="callsign"
+    )
+    radar.add_argument("--once", action="store_true")
+    radar.add_argument("--no-alt-screen", action="store_true")
     return parser
 
 
@@ -243,12 +268,198 @@ def _source_check(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
     return EXIT_OK
 
 
+def _radar_positioned(
+    snapshot: AircraftSnapshot, lat: float, lon: float, max_age: float
+) -> tuple[PositionedAircraft, ...]:
+    positioned, _ = _positioned(snapshot, lat, lon, max_age)
+    return _sort(positioned, "distance")
+
+
+def _radar(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    location = _source(args.source, parser)
+    lat = (
+        args.receiver_lat
+        if args.receiver_lat is not None
+        else _env_float("ANSIRADAR_RECEIVER_LAT", parser)
+    )
+    lon = (
+        args.receiver_lon
+        if args.receiver_lon is not None
+        else _env_float("ANSIRADAR_RECEIVER_LON", parser)
+    )
+    if lat is None or lon is None:
+        parser.error("receiver latitude and longitude are required")
+    if not coordinates_valid(lat, lon):
+        parser.error("receiver coordinates are outside valid ranges")
+    if not 5 <= args.range_nm <= 500:
+        parser.error("--range must be between 5 and 500 nm")
+    if args.refresh <= 0 or args.max_age < 0 or args.trails < 0:
+        parser.error("--refresh must be positive; ages and trails must be non-negative")
+    if not args.once and not sys.stdout.isatty():
+        parser.error("radar requires a TTY unless --once is specified")
+
+    capabilities = resolve_capabilities(charset=args.charset, color=args.color)
+    width, height = (80, 24) if args.once else (capabilities.width, capabilities.height)
+    selected: str | None = None
+    selection_index = 0
+    sort_mode = "distance"
+    label_mode = args.label
+    range_nm = args.range_nm
+    show_ground = True
+    paused = False
+    help_overlay = False
+    current: ScreenBuffer | None = None
+    last_snapshot: AircraftSnapshot | None = None
+    last_error = ""
+    next_fetch = 0.0
+    frame_count = 0
+
+    def frame() -> ScreenBuffer:
+        nonlocal last_snapshot, last_error
+        if time.monotonic() >= next_fetch and not paused:
+            try:
+                last_snapshot = _fetch(location)
+                last_error = ""
+            except SourceUnavailable as error:
+                last_error = f"source error: {error}"
+            except (InvalidSourceData, UnsupportedSource) as error:
+                last_error = str(error)
+        items = (
+            _radar_positioned(last_snapshot, lat, lon, args.max_age)
+            if last_snapshot
+            else ()
+        )
+        if sort_mode != "distance":
+            items = _sort(items, sort_mode)
+        selected_from_items = (
+            items[selection_index].aircraft.icao
+            if items and selection_index < len(items)
+            else selected
+        )
+        if selected_from_items is not None and selected_from_items not in {
+            item.aircraft.icao for item in items
+        }:
+            # Keep selection stable where possible; disappearance clears it.
+            selected_value = None
+        else:
+            selected_value = selected_from_items
+        rendered = render_radar(
+            items,
+            width=width,
+            height=height,
+            options=RadarRenderOptions(
+                range_nm=range_nm,
+                charset=args.charset,
+                color=capabilities.color and not args.once,
+                label=label_mode,
+                units=args.units,
+                ground=show_ground,
+                selected_icao=selected_value,
+            ),
+        )
+        if last_error:
+            rendered.clipped_text(
+                2, max(0, height - 2), f"ERROR: {last_error}", max(0, width - 4)
+            )
+        return rendered
+
+    def refresh_deadline() -> None:
+        nonlocal next_fetch
+        next_fetch = time.monotonic() + args.refresh
+
+    next_fetch = 0.0
+    if args.once:
+        rendered = frame()
+        print(rendered.serialize())
+        return EXIT_OK if not last_error else EXIT_UNAVAILABLE
+
+    with TerminalSession(alternate=not args.no_alt_screen):
+        try:
+            refresh_deadline()
+            while True:
+                rendered = frame()
+                if help_overlay:
+                    rendered.box(
+                        2, 2, min(width - 4, 56), min(height - 4, 17), args.charset
+                    )
+                    rendered.clipped_text(4, 3, "ANSIRadar controls", 48)
+                    rendered.clipped_text(
+                        4, 5, "q quit   Up/k previous   Down/j next", 48
+                    )
+                    rendered.clipped_text(
+                        4, 6, "Enter details   Esc close   +/- range", 48
+                    )
+                    rendered.clipped_text(
+                        4, 7, "1/2/3/4 preset   g ground   s sort", 48
+                    )
+                    rendered.clipped_text(
+                        4, 8, "l labels   t trails   p pause   r refresh", 48
+                    )
+                    rendered.clipped_text(4, 9, "? or Esc closes help", 48)
+                output = serialize_diff(rendered, current, color=capabilities.color)
+                if output:
+                    sys.stdout.write(output)
+                    sys.stdout.flush()
+                current = rendered
+                frame_count += 1
+                key = read_key(timeout=min(0.1, args.refresh))
+                if key:
+                    if key in {"q", "Q"} and not help_overlay:
+                        break
+                    if key in {"?", "h"}:
+                        help_overlay = not help_overlay
+                    elif key == "\x1b" and help_overlay:
+                        help_overlay = False
+                    elif key in {"p", "P"}:
+                        paused = not paused
+                    elif key in {"g", "G"}:
+                        show_ground = not show_ground
+                    elif key in {"+", "="}:
+                        range_nm = max(5.0, range_nm / 2)
+                    elif key == "-":
+                        range_nm = min(500.0, range_nm * 2)
+                    elif key in "1234":
+                        range_nm = {"1": 25.0, "2": 50.0, "3": 100.0, "4": 200.0}[key]
+                    elif key in {"r", "R"}:
+                        next_fetch = 0.0
+                    elif key in {"j", "\x1b[B"}:
+                        item_count = len(
+                            _radar_positioned(last_snapshot, lat, lon, args.max_age)
+                            if last_snapshot
+                            else ()
+                        )
+                        selection_index = min(
+                            selection_index + 1, max(0, item_count - 1)
+                        )
+                    elif key in {"k", "\x1b[A"}:
+                        selection_index = max(0, selection_index - 1)
+                    elif key == "s":
+                        sort_mode = {
+                            "distance": "callsign",
+                            "callsign": "altitude",
+                            "altitude": "distance",
+                        }[sort_mode]
+                    elif key == "l":
+                        label_mode = {
+                            "callsign": "icao",
+                            "icao": "none",
+                            "none": "callsign",
+                        }[label_mode]
+                refresh_deadline()
+        finally:
+            if frame_count:
+                print("", file=sys.stderr)
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     try:
         if args.command == "snapshot":
             return _snapshot(args, parser)
+        if args.command == "radar":
+            return _radar(args, parser)
         return _source_check(args, parser)
     except SourceUnavailable as error:
         print(f"ansiradar: source unavailable: {error}", file=sys.stderr)
