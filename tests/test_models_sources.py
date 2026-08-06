@@ -44,7 +44,7 @@ def test_file_url() -> None:
 def test_invalid_json_and_schema() -> None:
     with pytest.raises(InvalidSourceData):
         ReadsbSource(str(FIXTURES / "readsb-invalid.json")).fetch()
-    for payload in ([], {}, {"aircraft": {}}):
+    for payload in ([], {}, {"aircraft": {}}):  # type: ignore[var-annotated]
         with pytest.raises(UnsupportedSource):
             parse_readsb(payload)
 

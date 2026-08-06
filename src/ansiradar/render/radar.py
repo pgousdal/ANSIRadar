@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from ansiradar import __version__
 from ansiradar.models import PositionedAircraft
 from ansiradar.radar.projection import project_polar, range_nm_from_km
 from ansiradar.render.buffer import Cell, ScreenBuffer
@@ -18,6 +19,7 @@ class RadarRenderOptions:
     units: str = "aviation"
     ground: bool = True
     selected_icao: str | None = None
+    status: str = ""
 
 
 def _cell(
@@ -75,7 +77,7 @@ def render_radar(
         return buffer
     border = "ascii" if charset == "ascii" else charset
     buffer.box(0, 0, width, height, border)
-    title = " ANSIRadar 0.3.0 "
+    title = f" ANSIRadar {__version__} "
     buffer.clipped_text(max(1, (width - len(title)) // 2), 0, title, max(0, width - 2))
     if layout.too_small:
         buffer.clipped_text(
@@ -225,9 +227,11 @@ def render_radar(
             f"{speed:>5} {heading:>5} {distance:>6} {rate:>5} {age:>4}"
         )
         buffer.clipped_text(2, layout.list_y + 1 + index, row, max(0, width - 4))
-    status = (
-        f"Rng {options.range_nm:.0f}nm | {len(positioned)} ac | +/- range "
-        "| q quit | ? help"
-    )
-    buffer.clipped_text(2, layout.status_y, status, max(0, width - 4))
+    parts = [f"Rng {options.range_nm:.0f}nm", f"{len(positioned)} ac"]
+    if options.status:
+        parts.append(options.status)
+    parts.append("+/- range")
+    parts.append("q quit")
+    parts.append("? help")
+    buffer.clipped_text(2, layout.status_y, " | ".join(parts), max(0, width - 4))
     return buffer

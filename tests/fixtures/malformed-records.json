@@ -1,0 +1,16 @@
+{
+  "now": 1720000300.0,
+  "messages": 12,
+  "aircraft": [
+    {"hex": "abc111", "flight": "OKREC", "lat": 58.4, "lon": 6.3,
+     "alt_baro": 10000, "gs": 250, "track": 90, "seen_pos": 1},
+    {"hex": "not-a-hex", "lat": 10, "lon": 10},
+    "this is not an object",
+    {"hex": "abc222", "lat": 200.0, "lon": 6.3, "alt_baro": 5000},
+    {"lat": 58.1, "lon": 6.1},
+    null,
+    {"hex": 12, "lat": 58.2, "lon": 6.2},
+    {"hex": "abc333", "flight": "  SP ACES  ", "lat": 58.3, "lon": 6.4,
+     "alt_baro": "ground", "gs": 15}
+  ]
+}

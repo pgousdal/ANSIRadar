@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ansiradar"
 dynamic = ["version"]
-description = "Deterministic terminal snapshots of readsb/dump1090 aircraft data"
+description = "Live and deterministic terminal radar for local ADS-B decoder data"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"

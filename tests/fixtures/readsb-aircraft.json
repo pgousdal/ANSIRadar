@@ -1,0 +1,14 @@
+{
+  "now": 1720000000.0,
+  "messages": 123456,
+  "version": "synthetic",
+  "aircraft": [
+    {"hex":"478abc","flight":"  SAS431  ","lat":58.50,"lon":6.30,"alt_baro":37000,"alt_geom":37200,"gs":451.2,"track":213,"baro_rate":-64,"squawk":"1234","category":"A3","emergency":"none","seen":0.2,"seen_pos":1.2,"messages":100,"rssi":-18.5},
+    {"hex":"4ca123","flight":"RYR82Q","lat":58.20,"lon":6.50,"alt_baro":28400,"gs":389,"track":187,"seen_pos":2,"messages":90},
+    {"hex":"3c4def","lat":58.30,"lon":6.15,"alt_baro":12000,"gs":211,"track":90,"seen_pos":3},
+    {"hex":"abc001","flight":"TIE","lat":58.40,"lon":6.2812,"alt_baro":"ground","gs":12,"seen_pos":4,"emergency":"general"},
+    {"hex":"abc002","flight":"tie","lat":58.40,"lon":6.2812,"alt_geom":5000,"seen_pos":4},
+    {"hex":"abc003","flight":"NOPOS","alt_baro":9000,"seen":1},
+    {"hex":"abc004","flight":"BADNUM","lat":"bad","lon":6.2,"gs":"fast","track":null,"rssi":"bad"}
+  ]
+}

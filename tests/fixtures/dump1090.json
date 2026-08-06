@@ -1,0 +1,16 @@
+{
+  "now": 1720000100.0,
+  "messages": 777,
+  "aircraft": [
+    {"hex": "40621a", "flight": "BAW123", "lat": 51.47, "lon": -0.45,
+     "alt_baro": 32000, "alt_geom": 32300, "gs": 420.0, "track": 220.5,
+     "baro_rate": 0, "squawk": "5761", "category": "A5",
+     "emergency": "none", "seen": 0.1, "seen_pos": 1.0, "messages": 500,
+     "rssi": -12.3, "mlat": ["lat", "lon"], "tisb": false},
+    {"hex": "4caa33", "flight": "EZY88P", "lat": 51.30, "lon": 0.1,
+     "alt_baro": 24000, "gs": 380, "track": 90, "squawk": "3251",
+     "seen_pos": 2, "messages": 100},
+    {"hex": "3c4df1", "lat": 51.44, "lon": -0.30, "alt_geom": 12000,
+     "gs": 210, "track": 270, "seen": 3}
+  ]
+}

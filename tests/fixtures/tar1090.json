@@ -1,0 +1,19 @@
+{
+  "now": 1720000200.0,
+  "messages": 900,
+  "version": 1,
+  "aircraft": [
+    {"hex": "a7c0e1", "flight": "FDX1447", "lat": 33.63, "lon": -84.43,
+     "alt_baro": 36000, "alt_geom": 36100, "gs": 460.1, "track": 175,
+     "baro_rate": 32, "squawk": "7432", "category": "A6",
+     "emergency": "none", "seen": 0.2, "seen_pos": 0.9,
+     "messages": 888, "rssi": -8.1,
+     "nac_p": 9, "nac_v": 1, "sil": 3, "sil_type": "unknown",
+     "mlat": [], "tisb": [], "type": "adsb_icao"},
+    {"hex": "ab3f20", "flight": "UAL415", "lat": 34.0, "lon": -85.0,
+     "alt_baro": 30000, "gs": 400, "track": 200, "squawk": "2211",
+     "seen_pos": 1, "messages": 200},
+    {"hex": "0a3c11", "lat": 33.5, "lon": -84.0, "alt_baro": 18000,
+     "gs": 250, "track": 90, "seen": 4}
+  ]
+}

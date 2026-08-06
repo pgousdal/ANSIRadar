@@ -1,9 +1,17 @@
 # Architecture
 
-M1 has four layers: the readsb source performs one explicit read and parses an
-immutable snapshot; domain models preserve normalized aircraft facts; radar
-helpers derive distance and bearing; renderers emit stable text or JSON. The CLI
-connects these layers and maps expected failures to documented exit codes.
+M3 separates source I/O, normalization, track state, and terminal rendering.
+`UrlSource`, `FileSource`, and `ReplaySource` implement the source protocol and
+return normalized `ObservationSnapshot` values. They never access terminal
+sessions, keyboard input, screen buffers, or ANSI serializers.
 
-Interactive input, full-screen ANSI radar, trails, replay, persistence, SDR
-control, enrichment, route lookup, network polling, and telemetry are outside M1.
+The decoder compatibility layer accepts the common readsb/dump1090/tar1090
+`aircraft.json` shape. `TrackManager` upserts by normalized ICAO, retains
+omitted fields for a bounded lifetime, ages positions independently, rejects
+out-of-order observations, and bounds active memory. `SourcePoller` provides
+interval scheduling, retry backoff, last-good-snapshot retention, and compact
+health status.
+
+The CLI adapts track snapshots to the existing pure radar renderer. One-shot
+file and replay modes do not enter the alternate screen; interactive mode uses
+the existing exception-safe terminal lifecycle and differential rendering.

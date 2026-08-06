@@ -1,27 +1,36 @@
-"""Common source contract and errors."""
+"""Common source contract and the poll protocol."""
 
 from typing import Protocol
 
-from ansiradar.models import AircraftSnapshot
+from ansiradar.errors import (
+    InvalidSourceData,
+    ReplayExhausted,
+    ResponseTooLarge,
+    SourceError,
+    SourceUnavailable,
+    UnsupportedSource,
+)
+from ansiradar.obs import ObservationSnapshot
 
-
-class SourceError(Exception):
-    """Base class for expected source failures."""
-
-
-class SourceUnavailable(SourceError):
-    """The source could not be read or reached."""
-
-
-class InvalidSourceData(SourceError):
-    """The source body is not valid JSON."""
-
-
-class UnsupportedSource(SourceError):
-    """The source URI or JSON schema is unsupported."""
+__all__ = [
+    "AircraftSource",
+    "InvalidSourceData",
+    "ReplayExhausted",
+    "ResponseTooLarge",
+    "SourceError",
+    "SourceUnavailable",
+    "UnsupportedSource",
+]
 
 
 class AircraftSource(Protocol):
-    def fetch(self) -> AircraftSnapshot:
-        """Read and parse one source snapshot."""
+    """A live or static producer of normalized snapshots.
+
+    Source implementations must not touch terminals, screen buffers, keyboard
+    handling, radar layout, or ANSI rendering. They return normalized
+    snapshots and raise the ``SourceError`` subclasses defined here only.
+    """
+
+    def poll(self) -> ObservationSnapshot:
+        """Read one snapshot, raising a ``SourceError`` subclass on failure."""
         ...

@@ -1,14 +1,16 @@
 # Snapshot command
 
 ```text
-ansiradar snapshot --source SOURCE --receiver-lat FLOAT --receiver-lon FLOAT
+ansiradar snapshot --source file --file SOURCE --receiver-lat FLOAT --receiver-lon FLOAT
                     [--max-age 60] [--limit N]
                     [--sort distance|callsign|altitude]
                     [--units aviation|metric] [--json]
-ansiradar source-check --source SOURCE [--json]
+ansiradar source-check --source file --file SOURCE [--json]
 ```
 
-The default ordering is ascending distance. Missing sort values come last and
+The source kind can be `url`, `file`, or `replay`; use `--url` or
+`--replay-file` for the other kinds. The default ordering is ascending distance.
+Missing sort values come last and
 ICAO is the deterministic final tie-breaker. Callsigns compare case-insensitively.
 A positioned aircraft whose `seen_pos` exceeds `--max-age` is omitted from the
 table but retained in summary totals. If `seen_pos` is absent, freshness is
