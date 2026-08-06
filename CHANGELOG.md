@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- Add a Mystic Linux DOOR32.SYS interactive BBS door runtime.
+- Add descriptor/socket, local TTY, and deterministic memory transports.
+- Add CP437/ASCII BBS profiles, fragmented ANSI input, defensive IAC handling,
+  time-left and idle limits, disconnect handling, and node context.
+- Add deterministic DOOR32, socket-pair, and door-session coverage.
+
 ## 0.4.0
 
 - Add URL, local-file, and deterministic JSON Lines replay sources.

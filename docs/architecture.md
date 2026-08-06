@@ -15,3 +15,9 @@ health status.
 The CLI adapts track snapshots to the existing pure radar renderer. One-shot
 file and replay modes do not enter the alternate screen; interactive mode uses
 the existing exception-safe terminal lifecycle and differential rendering.
+
+M4 adds `parse_door32`, `DescriptorSocketTransport`, `LocalTTYTransport`, and
+`MemoryTransport`. `run_interactive` is shared by local and BBS sessions. The
+DOOR32 path is parsed before caller output, the supplied descriptor is duplicated
+for ownership safety, and `BBSTerminalProfile` performs explicit CP437/ASCII/
+Unicode encoding without local TTY probing.

@@ -5,22 +5,40 @@ import json
 import os
 import sys
 from collections.abc import Sequence
+from time import monotonic
 from typing import Any
 
 from ansiradar import __version__
+from ansiradar.bbs import BBSTerminalProfile
 from ansiradar.diag import make_logger, redact_url, shorten_message
+from ansiradar.door import (
+    DOOR_EXIT_DESCRIPTOR,
+    DOOR_EXIT_DISCONNECT,
+    DOOR_EXIT_DROPFILE,
+    DOOR_EXIT_IDLE,
+    DOOR_EXIT_INTERNAL,
+    DOOR_EXIT_OK,
+    DOOR_EXIT_SOURCE,
+    DOOR_EXIT_TIME_EXPIRED,
+    DOOR_EXIT_UNSUPPORTED_MODE,
+    Door32Error,
+    InvalidDescriptor,
+    UnsupportedCommunicationMode,
+    parse_door32,
+)
 from ansiradar.models import Aircraft, AircraftSnapshot, PositionedAircraft
 from ansiradar.obs import ObservationSnapshot, snapshot_to_aircraft_snapshot
 from ansiradar.poller import SourcePoller
 from ansiradar.radar.engine import RadarEngine
 from ansiradar.radar.geo import coordinates_valid, distance_km, initial_bearing_deg
-from ansiradar.render.ansi import serialize_diff
-from ansiradar.render.buffer import ScreenBuffer
 from ansiradar.render.radar import RadarRenderOptions, render_radar
 from ansiradar.render.snapshot import render_snapshot
 from ansiradar.replay import ReplayRecorder, ReplaySource
+from ansiradar.runtime import RuntimeConfig, run_interactive
 from ansiradar.sources import (
+    AircraftSource,
     InvalidSourceData,
+    SourceError,
     SourceSpec,
     SourceUnavailable,
     UnsupportedSource,
@@ -28,9 +46,9 @@ from ansiradar.sources import (
     normalize_kind,
 )
 from ansiradar.terminal.capabilities import resolve_capabilities
-from ansiradar.terminal.input import read_key
 from ansiradar.terminal.session import TerminalSession
 from ansiradar.tracking import TrackManager
+from ansiradar.transport import DescriptorSocketTransport, LocalTTYTransport
 
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -119,6 +137,34 @@ def _parser() -> argparse.ArgumentParser:
         "--removal-age", type=float, default=120.0, help="track removal age (s)"
     )
     radar.add_argument("--max-tracks", type=int, default=200)
+
+    door = subparsers.add_parser("door", help="interactive Mystic DOOR32 BBS door")
+    door.add_argument("--door32", required=True, help="path to Mystic DOOR32.SYS")
+    _add_source_args(door)
+    door.add_argument("--receiver-lat", type=float)
+    door.add_argument("--receiver-lon", type=float)
+    door.add_argument("--range", type=float, default=100.0, dest="range_nm")
+    door.add_argument("--refresh", type=float, default=DEFAULT_POLL_INTERVAL)
+    door.add_argument("--max-age", type=float, default=60.0)
+    door.add_argument("--units", choices=("metric", "aviation"), default="aviation")
+    door.add_argument(
+        "--charset", "--symbols", choices=("ascii", "cp437", "unicode"), default="cp437"
+    )
+    door.add_argument("--color", choices=("always", "never"), default="always")
+    door.add_argument("--trails", type=int, default=0)
+    door.add_argument(
+        "--label", choices=("callsign", "icao", "none"), default="callsign"
+    )
+    door.add_argument("--pos-stale", type=float, default=30.0)
+    door.add_argument("--track-stale", type=float, default=60.0)
+    door.add_argument("--removal-age", type=float, default=120.0)
+    door.add_argument("--max-tracks", type=int, default=200)
+    door.add_argument("--width", type=int, default=80)
+    door.add_argument("--height", type=int, default=24)
+    door.add_argument("--idle-timeout", type=float)
+    door.add_argument("--idle-warning", type=float, default=60.0)
+    door.add_argument("--time-warning", type=float, default=10.0)
+    door.add_argument("--no-clear-on-exit", action="store_true")
     return parser
 
 
@@ -578,8 +624,10 @@ def _make_engine(
     spec: SourceSpec,
     lat: float,
     lon: float,
+    *,
+    source: AircraftSource | None = None,
 ) -> RadarEngine:
-    source = build_source(spec)
+    source = source or build_source(spec)
     poller = SourcePoller(
         source,
         poll_interval=args.refresh,
@@ -617,134 +665,125 @@ def _radar(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     engine = _make_engine(args, spec, lat, lon)
     capabilities = resolve_capabilities(charset=args.charset, color=args.color)
-    width, height = capabilities.width, capabilities.height
-    selected: str | None = None
-    selection_index = 0
-    sort_mode = "distance"
-    label_mode = args.label
-    range_nm = args.range_nm
-    show_ground = True
-    paused = False
-    help_overlay = False
-    current: ScreenBuffer | None = None
-    frame_count = 0
-    recorder: ReplayRecorder | None = None
-    if args.record:
-        recorder = ReplayRecorder(args.record)
-
-    def frame() -> ScreenBuffer:
-        nonlocal selected
-        if not paused:
-            engine.step()
-        radar_frame = engine.frame()
-        items = radar_frame.items
-        if sort_mode != "distance":
-            items = _sort(items, sort_mode)
-        selected_from_items = (
-            items[selection_index].aircraft.icao
-            if items and selection_index < len(items)
-            else selected
-        )
-        if selected_from_items is not None and selected_from_items not in {
-            item.aircraft.icao for item in items
-        }:
-            selected = None
-        else:
-            selected = selected_from_items
-        status = _status_line(radar_frame.source_status, engine.now())
-        if not radar_frame.source_status.healthy:
-            detail = str(radar_frame.source_status.last_error or "")
-            status = f"{status} | {shorten_message(detail, limit=40)}"
-        rendered = render_radar(
-            items,
-            width=width,
-            height=height,
-            options=RadarRenderOptions(
-                range_nm=range_nm,
+    transport = LocalTTYTransport()
+    with TerminalSession(alternate=not args.no_alt_screen):
+        result = run_interactive(
+            engine,
+            transport,
+            RuntimeConfig(
+                width=capabilities.width,
+                height=capabilities.height,
                 charset=args.charset,
                 color=capabilities.color,
-                label=label_mode,
+                range_nm=args.range_nm,
+                label=args.label,
                 units=args.units,
-                ground=show_ground,
-                selected_icao=selected,
-                status=status,
+                poll_timeout=min(0.1, args.refresh),
+                send_setup=True,
+                clear_on_exit=True,
             ),
         )
-        return rendered
+    return EXIT_OK if result.reason in {"quit", "disconnect"} else EXIT_UNAVAILABLE
 
-    with TerminalSession(alternate=not args.no_alt_screen):
-        try:
-            while True:
-                rendered = frame()
-                if help_overlay:
-                    rendered.box(
-                        2, 2, min(width - 4, 56), min(height - 4, 17), args.charset
-                    )
-                    rendered.clipped_text(4, 3, "ANSIRadar controls", 48)
-                    rendered.clipped_text(
-                        4, 5, "q quit   Up/k previous   Down/j next", 48
-                    )
-                    rendered.clipped_text(
-                        4, 6, "Enter details   Esc close   +/- range", 48
-                    )
-                    rendered.clipped_text(
-                        4, 7, "1/2/3/4 preset   g ground   s sort", 48
-                    )
-                    rendered.clipped_text(
-                        4, 8, "l labels   t trails   p pause   r refresh", 48
-                    )
-                    rendered.clipped_text(4, 9, "? or Esc closes help", 48)
-                output = serialize_diff(rendered, current, color=capabilities.color)
-                if output:
-                    sys.stdout.write(output)
-                    sys.stdout.flush()
-                current = rendered
-                frame_count += 1
-                key = read_key(timeout=min(0.1, args.refresh))
-                if key:
-                    if key in {"q", "Q"} and not help_overlay:
-                        break
-                    if key in {"?", "h"}:
-                        help_overlay = not help_overlay
-                    elif key == "\x1b" and help_overlay:
-                        help_overlay = False
-                    elif key in {"p", "P"}:
-                        paused = not paused
-                    elif key in {"g", "G"}:
-                        show_ground = not show_ground
-                    elif key in {"+", "="}:
-                        range_nm = max(5.0, range_nm / 2)
-                    elif key == "-":
-                        range_nm = min(500.0, range_nm * 2)
-                    elif key in "1234":
-                        range_nm = {"1": 25.0, "2": 50.0, "3": 100.0, "4": 200.0}[key]
-                    elif key in {"r", "R"}:
-                        engine.poller.force_poll()
-                    elif key in {"j", "\x1b[B"}:
-                        item_count = len(engine.frame().items)
-                        selection_index = min(
-                            selection_index + 1, max(0, item_count - 1)
-                        )
-                    elif key in {"k", "\x1b[A"}:
-                        selection_index = max(0, selection_index - 1)
-                    elif key == "s":
-                        sort_mode = {
-                            "distance": "callsign",
-                            "callsign": "altitude",
-                            "altitude": "distance",
-                        }[sort_mode]
-                    elif key == "l":
-                        label_mode = {
-                            "callsign": "icao",
-                            "icao": "none",
-                            "none": "callsign",
-                        }[label_mode]
-        finally:
-            if recorder is not None:
-                recorder.close()
-            if frame_count:
-                print("", file=sys.stderr)
-    return EXIT_OK
+
+def _door(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Run the shared radar runtime over Mystic's supplied socket descriptor."""
+    session_started = monotonic()
+    try:
+        info = parse_door32(args.door32)
+    except UnsupportedCommunicationMode:
+        return DOOR_EXIT_UNSUPPORTED_MODE
+    except InvalidDescriptor:
+        return DOOR_EXIT_DESCRIPTOR
+    except Door32Error as error:
+        print(f"ansiradar door: invalid DOOR32.SYS: {error}", file=sys.stderr)
+        return DOOR_EXIT_DROPFILE
+
+    try:
+        spec = _resolve_spec(args, parser)
+        lat, lon = _receiver(args, parser)
+        if not 5 <= args.range_nm <= 500:
+            parser.error("--range must be between 5 and 500 nm")
+        if args.refresh <= 0 or args.max_age < 0 or args.trails < 0:
+            parser.error(
+                "--refresh must be positive; ages and trails must be non-negative"
+            )
+        if args.idle_timeout is not None and args.idle_timeout <= 0:
+            parser.error("--idle-timeout must be positive")
+        if (
+            args.idle_timeout is not None
+            and not 0 < args.idle_warning < args.idle_timeout
+        ):
+            parser.error("--idle-warning must be shorter than --idle-timeout")
+        if args.time_warning <= 0:
+            parser.error("--time-warning must be positive")
+        BBSTerminalProfile(
+            width=args.width,
+            height=args.height,
+            charset=args.charset,
+            color=args.color == "always",
+        )
+        transport = DescriptorSocketTransport(info.handle)
+    except (SourceError, ValueError, InvalidDescriptor) as error:
+        print(f"ansiradar door: configuration error: {error}", file=sys.stderr)
+        return (
+            DOOR_EXIT_SOURCE if isinstance(error, SourceError) else DOOR_EXIT_DROPFILE
+        )
+
+    logger = make_logger("ansiradar.door", path=args.log)
+    source: AircraftSource | None = None
+    try:
+        source = build_source(spec)
+        startup = source.poll()
+        engine = _make_engine(args, spec, lat, lon, source=source)
+        engine.poller.seed(startup)
+        engine.apply_manual(startup)
+        alias = info.user_alias or info.user_name or "caller"
+        context = f"{alias[:16]} N{info.node_number} {info.time_left_minutes}m"
+        result = run_interactive(
+            engine,
+            transport,
+            RuntimeConfig(
+                width=args.width,
+                height=args.height,
+                charset=args.charset,
+                color=args.color == "always",
+                range_nm=args.range_nm,
+                label=args.label,
+                units=args.units,
+                session_seconds=info.time_left_minutes * 60,
+                time_warning=args.time_warning,
+                session_started=session_started,
+                idle_timeout=args.idle_timeout,
+                idle_warning=args.idle_warning,
+                context=context,
+                send_setup=True,
+                clear_on_exit=not args.no_clear_on_exit,
+            ),
+        )
+        return {
+            "quit": DOOR_EXIT_OK,
+            "disconnect": DOOR_EXIT_DISCONNECT,
+            "time_expired": DOOR_EXIT_TIME_EXPIRED,
+            "idle_timeout": DOOR_EXIT_IDLE,
+            "internal_error": DOOR_EXIT_INTERNAL,
+        }.get(result.reason, DOOR_EXIT_OK)
+    except SourceError as error:
+        logger.error("door source startup failed: %s", shorten_message(str(error)))
+        return DOOR_EXIT_SOURCE
+    except (BrokenPipeError, ConnectionResetError, OSError):
+        return DOOR_EXIT_DISCONNECT
+    except Exception:
+        logger.exception("unexpected door runtime failure")
+        return DOOR_EXIT_INTERNAL
+    finally:
+        close = getattr(source, "close", None)
+        if close is not None:
+            try:
+                close()
+            except Exception:  # noqa: BLE001
+                pass
+        transport.close()
 
 
 def _record_one(path: str, snapshot: ObservationSnapshot, logger: Any) -> None:
@@ -766,6 +805,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _snapshot(args, parser)
         if args.command == "radar":
             return _radar(args, parser)
+        if args.command == "door":
+            return _door(args, parser)
         if args.command == "replay-inspect":
             return _replay_inspect(args, parser)
         return _source_check(args, parser)

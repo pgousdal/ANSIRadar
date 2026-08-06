@@ -1,9 +1,9 @@
 # ANSIRadar
 
 ANSIRadar turns local readsb, dump1090, and tar1090-compatible `aircraft.json`
-data into deterministic terminal snapshots and an interactive 80x24-friendly
-ANSI polar radar. M3 adds live URL/file polling, bounded track aging, replay,
-recording, and source diagnostics. It does not implement BBS door protocols.
+data into deterministic terminal snapshots, an interactive 80x24-friendly ANSI
+polar radar, and a Mystic BBS door runtime. M4 supports Mystic BBS on Linux
+through `DOOR32.SYS` descriptor/socket mode.
 
 ## Install
 
@@ -57,6 +57,11 @@ ansiradar source-check --source file --file tests/fixtures/readsb-aircraft.json
 ansiradar replay-inspect tests/fixtures/radar-replay.jsonl
 ansiradar radar --source replay --replay-file tests/fixtures/radar-replay.jsonl \
   --receiver-lat 58.3405 --receiver-lon 6.2812 --once --color never --symbols ascii
+
+ansiradar door --door32 /path/to/DOOR32.SYS \
+  --source url --url http://127.0.0.1:8080/data/aircraft.json \
+  --receiver-lat 58.3405 --receiver-lon 6.2812 \
+  --charset cp437 --color always
 ```
 
 Text output begins with receiver and aircraft totals, followed by an ASCII table:
@@ -79,4 +84,5 @@ receiver locations.
 
 See [source setup](docs/readsb-source.md), [live sources and tracks](docs/m3-sources.md),
 [data model](docs/data-model.md), [architecture](docs/architecture.md),
-[radar command](docs/radar-command.md), and [keyboard controls](docs/keyboard-controls.md).
+[radar command](docs/radar-command.md), [Mystic door setup](docs/mystic-door.md),
+and [keyboard controls](docs/keyboard-controls.md).

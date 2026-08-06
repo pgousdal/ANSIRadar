@@ -34,7 +34,7 @@ def test_radar_ascii_is_deterministic_and_size_safe() -> None:
     first = render_radar((item,), width=80, height=24)
     second = render_radar((item,), width=80, height=24)
     assert first.serialize() == second.serialize()
-    assert "ANSIRadar 0.4.0" in first.serialize()
+    assert "ANSIRadar 0.5.0" in first.serialize()
     assert "+" in first.serialize()
     tiny = render_radar((item,), width=20, height=10)
     assert "too sma" in tiny.serialize()

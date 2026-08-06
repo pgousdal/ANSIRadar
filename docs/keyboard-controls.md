@@ -5,3 +5,7 @@ context; `Esc` closes help. `+`/`=` halves the visible range and `-` doubles it;
 `1`/`2`/`3`/`4` select 25/50/100/200 nm. `g` toggles ground aircraft, `s` cycles
 distance/callsign/altitude sorting, `l` cycles callsign/ICAO/no labels, `t`
 toggles trail mode, `p` pauses, `r` refreshes immediately, and `?` opens help.
+
+Door mode decodes these keys from transport bytes rather than termios. ANSI
+arrow sequences may be fragmented across reads; bounded Telnet IAC negotiation
+bytes are ignored defensively and are never rendered as keys.

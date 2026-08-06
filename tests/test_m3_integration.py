@@ -38,7 +38,7 @@ def test_radar_once_file_source(capsys: pytest.CaptureFixture[str]) -> None:
     code = main([*_base_radar_args(), "--source", "file", "--file", BASIC])
     output = capsys.readouterr().out
     assert code == 0
-    assert "ANSIRadar 0.4.0" in output
+    assert "ANSIRadar 0.5.0" in output
     assert "CALL" in output and "Rng 100nm" in output
     assert "\x1b" not in output
 

@@ -97,6 +97,18 @@ class SourcePoller:
         """Schedule the next poll immediately (used by the manual refresh key)."""
         self._next_poll = 0.0
 
+    def seed(self, snapshot: ObservationSnapshot) -> None:
+        """Install a validated startup snapshot without counting a retry."""
+        now = self.clock()
+        self._last_snapshot = snapshot
+        self._last_success = now
+        self._last_poll = now
+        self._last_error = None
+        self._backoff = 0.0
+        self._exhausted = False
+        self._skipped = snapshot.skipped
+        self._next_poll = now + self.poll_interval
+
     def _source_due(self, now: float) -> bool:
         if hasattr(self.source, "is_due"):
             due = self.source.is_due(now)

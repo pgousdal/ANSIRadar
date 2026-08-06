@@ -29,6 +29,11 @@ path = "src/ansiradar/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/ansiradar"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"docs/mystic-door.md" = "ansiradar_assets/docs/mystic-door.md"
+"examples/mystic/README.md" = "ansiradar_assets/examples/mystic/README.md"
+"examples/mystic/ansiradar-door.sh" = "ansiradar_assets/examples/mystic/ansiradar-door.sh"
+
 [tool.ruff]
 line-length = 88
 target-version = "py311"
