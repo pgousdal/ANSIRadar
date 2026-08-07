@@ -86,3 +86,10 @@ See [source setup](docs/readsb-source.md), [live sources and tracks](docs/m3-sou
 [data model](docs/data-model.md), [architecture](docs/architecture.md),
 [radar command](docs/radar-command.md), [Mystic door setup](docs/mystic-door.md),
 and [keyboard controls](docs/keyboard-controls.md).
+
+## 80x25 C edition
+
+The repository also includes a standalone C99 classic-BBS edition with a native
+80x25 CP437/ANSI layout, provider abstraction, CSV replay, virtual screen
+buffer, and incremental cursor-addressed rendering. Build it with `cmake` or
+the fallback `Makefile`; see [80x25 edition](docs/80x25-edition.md).
