@@ -57,8 +57,11 @@ ansiradar door ... --debug-input-log /var/log/ansiradar/node1-input.log
 
 `ANSIRADAR_DEBUG_INPUT_LOG` is an equivalent environment-variable fallback.
 The log records received bytes as hex, decoded keys, and the controlled exit
-reason. It never writes to the caller socket, stdout, or stderr, and disables
-itself if the file cannot be written. Use distinct paths for simultaneous nodes.
+reason. It also records interesting transport transitions such as
+`read_would_block`, `read_eof`, `read_error`, `write_error`, and their disconnect
+source. It never writes to the caller socket, stdout, or stderr, and disables
+itself if the file cannot be written. Repeated normal timeouts are suppressed.
+Use distinct paths for simultaneous nodes.
 
 ## DOOR32 assumptions
 

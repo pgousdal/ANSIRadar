@@ -1,7 +1,9 @@
 """Deterministic M4 DOOR32, transport, input, and runtime tests."""
 
+import errno
 import socket
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -20,7 +22,11 @@ from ansiradar.radar.engine import RadarEngine
 from ansiradar.runtime import RuntimeConfig, run_interactive
 from ansiradar.sources.file import FileSource
 from ansiradar.tracking import TrackManager
-from ansiradar.transport import DescriptorSocketTransport, MemoryTransport
+from ansiradar.transport import (
+    DescriptorSocketTransport,
+    MemoryTransport,
+    TransportDisconnected,
+)
 from ansiradar.transport_input import KeyDecoder, decode_bytes, read_key
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -141,6 +147,131 @@ def test_read_key_preserves_key_before_fragmented_arrow() -> None:
     decoder = KeyDecoder()
     assert read_key(transport, decoder, timeout=0) == "j"
     assert read_key(transport, decoder, timeout=0) == "UP"
+
+
+class _FakeSocket:
+    def __init__(self, *receives: object) -> None:
+        self.receives = list(receives)
+
+    def recv(self, size: int) -> bytes:
+        del size
+        result = self.receives.pop(0)
+        if isinstance(result, BaseException):
+            raise result
+        return cast(bytes, result)
+
+    def close(self) -> None:
+        return
+
+    def send(self, data: bytes) -> int:
+        return len(data)
+
+
+def _fake_descriptor(*receives: object) -> DescriptorSocketTransport:
+    transport = object.__new__(DescriptorSocketTransport)
+    transport.socket = cast(Any, _FakeSocket(*receives))
+    transport.connected = True
+    transport._debug = None
+    transport._last_event = None
+    return transport
+
+
+def test_descriptor_timeout_and_would_block_stay_connected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ansiradar.transport as transport_module
+
+    module = cast(Any, transport_module)
+
+    fake = _fake_descriptor(
+        BlockingIOError(errno.EAGAIN, "would block"),
+        BlockingIOError(errno.EWOULDBLOCK, "would block"),
+        InterruptedError(),
+    )
+    monkeypatch.setattr(module.select, "select", lambda *args: ([], [], []))
+    assert fake.read(8, timeout=0) == b""
+    monkeypatch.setattr(module.select, "select", lambda *args: ([fake.socket], [], []))
+    assert fake.read(8, timeout=0) == b""
+    assert fake.read(8, timeout=0) == b""
+    assert fake.read(8, timeout=0) == b""
+    assert fake.is_connected()
+
+
+def test_transport_debug_events_are_interesting_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ansiradar.transport as transport_module
+
+    module = cast(Any, transport_module)
+    events: list[str] = []
+    fake = _fake_descriptor(BlockingIOError(errno.EAGAIN, "would block"))
+    fake.set_debug(events.append)
+    monkeypatch.setattr(module.select, "select", lambda *args: ([], [], []))
+    fake.read(8, timeout=0)
+    fake.read(8, timeout=0)
+    monkeypatch.setattr(module.select, "select", lambda *args: ([fake.socket], [], []))
+    fake.read(8, timeout=0)
+    assert events == ["read_timeout", "read_would_block errno=11"]
+
+
+def test_data_then_eagain_stays_connected_and_read_key_preserves_j(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ansiradar.transport as transport_module
+
+    module = cast(Any, transport_module)
+
+    fake = _fake_descriptor(b"j", BlockingIOError(errno.EAGAIN, "would block"))
+    monkeypatch.setattr(module.select, "select", lambda *args: ([fake.socket], [], []))
+    decoder = KeyDecoder()
+    assert read_key(fake, decoder, timeout=0) == "j"
+    assert read_key(fake, decoder, timeout=0) is None
+    assert fake.is_connected()
+
+
+def test_runtime_j_then_eagain_does_not_disconnect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ansiradar.transport as transport_module
+
+    module = cast(Any, transport_module)
+    fake = _fake_descriptor(b"j", BlockingIOError(errno.EAGAIN, "would block"), b"q")
+    monkeypatch.setattr(
+        module.select,
+        "select",
+        lambda *args: ([fake.socket], [fake.socket], []),
+    )
+    result = run_interactive(_engine([0.0]), fake, RuntimeConfig(), clock=lambda: 0.0)
+    assert result.reason == "quit"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [ConnectionResetError(errno.ECONNRESET, "reset"), OSError(errno.EBADF, "bad fd")],
+)
+def test_real_socket_errors_disconnect(
+    monkeypatch: pytest.MonkeyPatch, error: OSError
+) -> None:
+    import ansiradar.transport as transport_module
+
+    module = cast(Any, transport_module)
+
+    fake = _fake_descriptor(error)
+    monkeypatch.setattr(module.select, "select", lambda *args: ([fake.socket], [], []))
+    with pytest.raises(TransportDisconnected):
+        fake.read(8, timeout=0)
+    assert not fake.is_connected()
+
+
+def test_recv_eof_disconnects(monkeypatch: pytest.MonkeyPatch) -> None:
+    import ansiradar.transport as transport_module
+
+    module = cast(Any, transport_module)
+
+    fake = _fake_descriptor(b"")
+    monkeypatch.setattr(module.select, "select", lambda *args: ([fake.socket], [], []))
+    assert fake.read(8, timeout=0) == b""
+    assert not fake.is_connected()
 
 
 def test_read_key_fragmented_arrow_across_reads() -> None:

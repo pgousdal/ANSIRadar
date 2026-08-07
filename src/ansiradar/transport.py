@@ -5,6 +5,7 @@ import os
 import select
 import socket
 import sys
+from collections.abc import Callable
 from typing import Protocol
 
 from ansiradar.door import InvalidDescriptor
@@ -12,6 +13,10 @@ from ansiradar.door import InvalidDescriptor
 
 class TransportError(ConnectionError):
     """A transport could not read or write its connection."""
+
+
+class TransportDisconnected(TransportError):
+    """The peer or descriptor has definitively disconnected."""
 
 
 class InteractiveTransport(Protocol):
@@ -48,7 +53,7 @@ class MemoryTransport:
 
     def write(self, data: bytes) -> None:
         if not self.connected:
-            raise TransportError("memory transport is disconnected")
+            raise TransportDisconnected("memory transport is disconnected")
         self.outgoing.extend(data)
 
     def flush(self) -> None:
@@ -90,6 +95,8 @@ class LocalTTYTransport:
 
     def write(self, data: bytes) -> None:
         target = getattr(self.output_stream, "buffer", self.output_stream)
+        if not self.connected:
+            raise TransportDisconnected("local transport is disconnected")
         try:
             _write_filelike(target, data)
         except (OSError, ValueError) as error:
@@ -132,6 +139,11 @@ class DescriptorSocketTransport:
                 f"descriptor {descriptor} is not a connected socket: {error}"
             ) from error
         self.connected = True
+        self._debug: Callable[[str], None] | None = None
+        self._last_event: str | None = None
+
+    def set_debug(self, callback: Callable[[str], None] | None) -> None:
+        self._debug = callback
 
     def read(self, size: int, timeout: float | None = None) -> bytes:
         if not self.connected:
@@ -139,22 +151,39 @@ class DescriptorSocketTransport:
         try:
             readable, _, _ = select.select([self.socket], [], [], timeout)
             if not readable:
+                self._event("read_timeout")
                 return b""
             data = self.socket.recv(max(1, size))
         except InterruptedError:
+            self._event("read_interrupted")
             return b""
+        except BlockingIOError as error:
+            if error.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                self._event(f"read_would_block errno={error.errno}")
+                return b""
+            self.connected = False
+            self._event(_error_event("read_error", error))
+            self._event("disconnect source=read_error")
+            raise TransportDisconnected(str(error)) from error
         except (OSError, ValueError) as error:
             if _disconnect_errno(error):
                 self.connected = False
-                return b""
+                self._event(_error_event("read_error", error))
+                self._event("disconnect source=read_error")
+                raise TransportDisconnected(str(error)) from error
+            self._event(_error_event("read_error", error))
             raise TransportError(str(error)) from error
         if not data:
             self.connected = False
+            self._event("read_eof")
+            self._event("disconnect source=read_eof")
+        else:
+            self._last_event = None
         return data
 
     def write(self, data: bytes) -> None:
         if not self.connected:
-            raise TransportError("socket is disconnected")
+            raise TransportDisconnected("socket is disconnected")
         view = memoryview(data)
         while view:
             try:
@@ -170,11 +199,16 @@ class DescriptorSocketTransport:
                 continue
             except (BrokenPipeError, ConnectionResetError) as error:
                 self.connected = False
-                raise TransportError(str(error)) from error
+                self._event(_error_event("write_error", error))
+                self._event("disconnect source=write_error")
+                raise TransportDisconnected(str(error)) from error
             except OSError as error:
                 if _disconnect_errno(error):
                     self.connected = False
-                    raise TransportError(str(error)) from error
+                    self._event(_error_event("write_error", error))
+                    self._event("disconnect source=write_error")
+                    raise TransportDisconnected(str(error)) from error
+                self._event(_error_event("write_error", error))
                 raise
 
     def flush(self) -> None:
@@ -189,6 +223,17 @@ class DescriptorSocketTransport:
         try:
             self.socket.close()
         except OSError:
+            pass
+
+    def _event(self, message: str) -> None:
+        if self._debug is None:
+            return
+        if message == self._last_event and message == "read_timeout":
+            return
+        self._last_event = message
+        try:
+            self._debug(message)
+        except Exception:  # noqa: BLE001 - diagnostics must never affect I/O
             pass
 
 
@@ -223,3 +268,7 @@ def _disconnect_errno(error: BaseException) -> bool:
         errno.ECONNABORTED,
         errno.ESHUTDOWN,
     }
+
+
+def _error_event(kind: str, error: BaseException) -> str:
+    return f"{kind} errno={getattr(error, 'errno', None)} message={error}"

@@ -10,10 +10,15 @@ from ansiradar.radar.engine import RadarEngine
 from ansiradar.render.ansi import serialize_diff
 from ansiradar.render.buffer import ScreenBuffer
 from ansiradar.render.radar import RadarRenderOptions
-from ansiradar.transport import InteractiveTransport, TransportError
+from ansiradar.transport import (
+    InteractiveTransport,
+    TransportDisconnected,
+    TransportError,
+)
 from ansiradar.transport_input import (
     InputDebugLog,
     InputDisconnected,
+    InputTransportError,
     KeyDecoder,
     read_key,
 )
@@ -69,6 +74,10 @@ def run_interactive(
     )
     decoder = KeyDecoder()
     debug = InputDebugLog(config.debug_input_log) if config.debug_input_log else None
+    if debug is not None:
+        set_debug = getattr(transport, "set_debug", None)
+        if set_debug is not None:
+            set_debug(debug.event)
     current: ScreenBuffer | None = None
     selected: str | None = None
     selection_index = 0
@@ -196,8 +205,11 @@ def run_interactive(
                     "icao": "none",
                     "none": "callsign",
                 }[label_mode]
-    except (TransportError, BrokenPipeError, ConnectionResetError):
+    except (TransportDisconnected, BrokenPipeError, ConnectionResetError):
         reason = "disconnect"
+    except (TransportError, InputTransportError):
+        reason = "internal_error"
+        raise
     except Exception:
         reason = "internal_error"
         raise

@@ -5,7 +5,11 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Protocol
 
-from ansiradar.transport import InteractiveTransport, TransportError
+from ansiradar.transport import (
+    InteractiveTransport,
+    TransportDisconnected,
+    TransportError,
+)
 
 MAX_ESCAPE_BYTES = 16
 MAX_TELNET_BYTES = 256
@@ -150,16 +154,20 @@ def read_key(
         return key
     try:
         data = transport.read(64, timeout)
-    except TransportError as error:
+    except TransportDisconnected as error:
         raise InputDisconnected(str(error)) from error
+    except TransportError as error:
+        raise InputTransportError(str(error)) from error
     if not data:
         if not transport.is_connected():
             raise InputDisconnected("remote connection closed")
         if decoder.pending_escape():
             try:
                 more = transport.read(64, min(max(timeout, 0.0), 0.05))
-            except TransportError as error:
+            except TransportDisconnected as error:
                 raise InputDisconnected(str(error)) from error
+            except TransportError as error:
+                raise InputTransportError(str(error)) from error
             if more:
                 if debug is not None:
                     debug.raw(more)
@@ -176,12 +184,15 @@ def read_key(
         return None
     if debug is not None:
         debug.raw(data)
-    keys = decoder.feed(data)
-    del keys
+    decoder.feed(data)
     key = decoder.pop_key()
     if key is not None and debug is not None:
         debug.key(key)
     return key
+
+
+class InputTransportError(Exception):
+    """An unexpected transport error, distinct from a remote disconnect."""
 
 
 def decode_bytes(chunks: Iterable[bytes]) -> list[str]:
@@ -220,6 +231,9 @@ class InputDebugLog:
 
     def exit(self, reason: str) -> None:
         self._write(f"exit={reason!r}\n")
+
+    def event(self, message: str) -> None:
+        self._write(f"event={message}\n")
 
     def close(self) -> None:
         if self._handle is not None:
