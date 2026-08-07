@@ -165,6 +165,10 @@ def _parser() -> argparse.ArgumentParser:
     door.add_argument("--idle-warning", type=float, default=60.0)
     door.add_argument("--time-warning", type=float, default=10.0)
     door.add_argument("--no-clear-on-exit", action="store_true")
+    door.add_argument(
+        "--debug-input-log",
+        help="optional bounded raw-input diagnostic log (door mode only)",
+    )
     return parser
 
 
@@ -756,6 +760,9 @@ def _door(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
                 session_started=session_started,
                 idle_timeout=args.idle_timeout,
                 idle_warning=args.idle_warning,
+                debug_input_log=(
+                    args.debug_input_log or os.getenv("ANSIRADAR_DEBUG_INPUT_LOG")
+                ),
                 context=context,
                 send_setup=True,
                 clear_on_exit=not args.no_clear_on_exit,

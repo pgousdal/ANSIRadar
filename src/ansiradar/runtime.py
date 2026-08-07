@@ -11,7 +11,12 @@ from ansiradar.render.ansi import serialize_diff
 from ansiradar.render.buffer import ScreenBuffer
 from ansiradar.render.radar import RadarRenderOptions
 from ansiradar.transport import InteractiveTransport, TransportError
-from ansiradar.transport_input import InputDisconnected, KeyDecoder, read_key
+from ansiradar.transport_input import (
+    InputDebugLog,
+    InputDisconnected,
+    KeyDecoder,
+    read_key,
+)
 
 MAX_FRAME_BYTES = 1024 * 1024
 
@@ -31,6 +36,7 @@ class RuntimeConfig:
     idle_timeout: float | None = None
     idle_warning: float = 60.0
     session_started: float | None = None
+    debug_input_log: str | None = None
     context: str = ""
     send_setup: bool = True
     clear_on_exit: bool = True
@@ -62,6 +68,7 @@ def run_interactive(
         color=config.color,
     )
     decoder = KeyDecoder()
+    debug = InputDebugLog(config.debug_input_log) if config.debug_input_log else None
     current: ScreenBuffer | None = None
     selected: str | None = None
     selection_index = 0
@@ -146,6 +153,7 @@ def run_interactive(
                     transport,
                     decoder,
                     timeout=min(config.poll_timeout, 0.25),
+                    debug=debug,
                 )
             except InputDisconnected:
                 reason = "disconnect"
@@ -156,7 +164,7 @@ def run_interactive(
             if key in {"q", "Q"} and not help_overlay:
                 reason = "quit"
                 break
-            if key in {"?", "h", "ENTER"}:
+            if key in {"?", "h"}:
                 help_overlay = not help_overlay
             elif key == "\x1b" and help_overlay:
                 help_overlay = False
@@ -200,6 +208,9 @@ def run_interactive(
                 transport.flush()
             except (TransportError, OSError):
                 reason = "disconnect"
+        if debug is not None:
+            debug.exit(reason)
+            debug.close()
     return RuntimeResult(reason=reason, frames=frames)
 
 
@@ -238,10 +249,10 @@ def _help(buffer: ScreenBuffer, charset: str) -> None:
     buffer.box(2, 2, min(buffer.width - 4, 56), min(buffer.height - 4, 17), charset)
     buffer.clipped_text(4, 3, "ANSIRadar controls", 48)
     buffer.clipped_text(4, 5, "q quit   Up/k previous   Down/j next", 48)
-    buffer.clipped_text(4, 6, "Enter details   Esc close   +/- range", 48)
+    buffer.clipped_text(4, 6, "Esc close help   Enter no action   +/- range", 48)
     buffer.clipped_text(4, 7, "1/2/3/4 preset   g ground   s sort", 48)
-    buffer.clipped_text(4, 8, "l labels   t trails   p pause   r refresh", 48)
-    buffer.clipped_text(4, 9, "? or Esc closes help", 48)
+    buffer.clipped_text(4, 8, "l labels   p pause   r refresh", 48)
+    buffer.clipped_text(4, 9, "? or h toggles help", 48)
 
 
 def _status(

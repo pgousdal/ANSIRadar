@@ -21,7 +21,7 @@ from ansiradar.runtime import RuntimeConfig, run_interactive
 from ansiradar.sources.file import FileSource
 from ansiradar.tracking import TrackManager
 from ansiradar.transport import DescriptorSocketTransport, MemoryTransport
-from ansiradar.transport_input import decode_bytes
+from ansiradar.transport_input import KeyDecoder, decode_bytes, read_key
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -128,6 +128,45 @@ def test_input_fragmentation_and_telnet_defense() -> None:
     assert decode_bytes([b"\x1b[999999999999999999Aq"]) == ["\x1b", "q"]
 
 
+def test_read_key_preserves_every_key_from_one_read() -> None:
+    transport = MemoryTransport(b"jp1")
+    decoder = KeyDecoder()
+    assert read_key(transport, decoder, timeout=0) == "j"
+    assert read_key(transport, decoder, timeout=0) == "p"
+    assert read_key(transport, decoder, timeout=0) == "1"
+
+
+def test_read_key_preserves_key_before_fragmented_arrow() -> None:
+    transport = MemoryTransport(b"j\x1b[A")
+    decoder = KeyDecoder()
+    assert read_key(transport, decoder, timeout=0) == "j"
+    assert read_key(transport, decoder, timeout=0) == "UP"
+
+
+def test_read_key_fragmented_arrow_across_reads() -> None:
+    class Chunks(MemoryTransport):
+        def __init__(self) -> None:
+            super().__init__()
+            self.chunks = [b"\x1b", b"[", b"A"]
+
+        def read(self, size: int, timeout: float | None = None) -> bytes:
+            del size, timeout
+            return self.chunks.pop(0) if self.chunks else b""
+
+    transport = Chunks()
+    decoder = KeyDecoder()
+    assert read_key(transport, decoder, timeout=0.01) is None
+    assert read_key(transport, decoder, timeout=0.01) is None
+    assert read_key(transport, decoder, timeout=0.01) == "UP"
+
+
+def test_timeout_is_not_disconnect() -> None:
+    transport = MemoryTransport()
+    decoder = KeyDecoder()
+    assert read_key(transport, decoder, timeout=0.01) is None
+    assert transport.is_connected()
+
+
 def _engine(clock: list[float]) -> RadarEngine:
     source = FileSource(str(FIXTURES / "readsb-aircraft.json"))
     poller = SourcePoller(source, clock=lambda: clock[0], poll_interval=1)
@@ -166,6 +205,65 @@ def test_runtime_disconnect_is_normal() -> None:
         clock=lambda: clock[0],
     )
     assert result.reason == "disconnect"
+
+
+def test_runtime_only_q_is_quit_key(tmp_path: Path) -> None:
+    clock = [0.0]
+    transport = MemoryTransport(b"jp1?\x1b\rq")
+    result = run_interactive(
+        _engine(clock),
+        transport,
+        RuntimeConfig(debug_input_log=str(tmp_path / "input.log")),
+        clock=lambda: clock[0],
+    )
+    assert result.reason == "quit"
+    assert result.frames >= 5
+
+
+def test_help_controls_match_runtime() -> None:
+    from ansiradar.render.buffer import ScreenBuffer
+    from ansiradar.runtime import _help
+
+    buffer = ScreenBuffer(80, 24)
+    _help(buffer, "ascii")
+    text = buffer.serialize()
+    assert "Enter no action" in text
+    assert "? or h toggles help" in text
+    assert "t trails" not in text
+
+
+def test_input_debug_log_is_opt_in_and_bounded(tmp_path: Path) -> None:
+    path = tmp_path / "input.log"
+    transport = MemoryTransport(b"jq")
+    result = run_interactive(
+        _engine([0.0]),
+        transport,
+        RuntimeConfig(debug_input_log=str(path)),
+        clock=lambda: 0.0,
+    )
+    text = path.read_text()
+    assert result.reason == "quit"
+    assert "raw=6a71" in text
+    assert "key='j'" in text
+    assert "key='q'" in text
+    assert "exit='quit'" in text
+
+
+def test_debug_log_write_failure_does_not_crash(tmp_path: Path) -> None:
+    transport = MemoryTransport(b"q")
+    result = run_interactive(
+        _engine([0.0]),
+        transport,
+        RuntimeConfig(debug_input_log=str(tmp_path / "missing" / "input.log")),
+        clock=lambda: 0.0,
+    )
+    assert result.reason == "quit"
+
+
+def test_debug_log_disabled_by_default(tmp_path: Path) -> None:
+    transport = MemoryTransport(b"q")
+    run_interactive(_engine([0.0]), transport, RuntimeConfig(), clock=lambda: 0.0)
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_runtime_time_limit_is_injected() -> None:

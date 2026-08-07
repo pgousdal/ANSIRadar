@@ -48,6 +48,18 @@ and no local TTY requirement. `q`, arrows, `j`/`k`, `+`/`=`/`-`, range digits,
 source refreshes do not reset it. Session time is taken from DOOR32 and the
 door stops conservatively before the supplied limit.
 
+`?` and `h` toggle help, `Esc` closes help, and Enter has no action. For input
+troubleshooting, enable a bounded file log explicitly:
+
+```console
+ansiradar door ... --debug-input-log /var/log/ansiradar/node1-input.log
+```
+
+`ANSIRADAR_DEBUG_INPUT_LOG` is an equivalent environment-variable fallback.
+The log records received bytes as hex, decoded keys, and the controlled exit
+reason. It never writes to the caller socket, stdout, or stderr, and disables
+itself if the file cannot be written. Use distinct paths for simultaneous nodes.
+
 ## DOOR32 assumptions
 
 The parser expects these lines in order: communication type, communication
