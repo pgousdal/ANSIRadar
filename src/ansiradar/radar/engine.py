@@ -37,6 +37,7 @@ class RadarEngine:
         self.receiver_lon = receiver_lon
         self.max_age = max_age
         self._last_applied: ObservationSnapshot | None = None
+        self._closed = False
 
     def step(self) -> None:
         self.poller.step()
@@ -103,3 +104,10 @@ class RadarEngine:
             track_summary=self.tracks.summary(),
             source_status=self.poller.status(),
         )
+
+    def close(self) -> None:
+        """Release the poller's source and any resources it owns."""
+        if self._closed:
+            return
+        self._closed = True
+        self.poller.close()

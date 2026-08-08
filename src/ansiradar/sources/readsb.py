@@ -101,14 +101,19 @@ class ReadsbSource:
     def _read(self) -> str:
         parsed = urlparse(self.location)
         if parsed.scheme in {"http", "https"}:
+            response = None
             try:
                 response = httpx.get(self.location, timeout=self.timeout)
                 response.raise_for_status()
+                text = response.text
             except httpx.HTTPError as error:
                 raise SourceUnavailable(
                     f"cannot read {self.location}: {error}"
                 ) from error
-            return response.text
+            finally:
+                if response is not None:
+                    response.close()
+            return text
         if parsed.scheme == "file":
             if parsed.netloc not in {"", "localhost"}:
                 raise UnsupportedSource("remote file URLs are not supported")

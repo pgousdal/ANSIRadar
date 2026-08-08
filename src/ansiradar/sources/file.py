@@ -51,6 +51,10 @@ class FileSource:
             max_aircraft=self.max_aircraft,
         ).snapshot
 
+    def close(self) -> None:
+        """File reads are scoped to poll(); there is no persistent handle."""
+        return
+
     def _read_text(self) -> str:
         try:
             stat = self.path.stat()

@@ -214,6 +214,10 @@ class ReplaySource:
     def observation_count(self) -> int:
         return sum(len(record.observations) for record in self._records)
 
+    def close(self) -> None:
+        """Replay input is loaded with a scoped file handle during startup."""
+        return
+
     def last_timestamp(self) -> float | None:
         return self._records[-1].timestamp if self._records else None
 

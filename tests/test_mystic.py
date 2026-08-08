@@ -21,6 +21,7 @@ from ansiradar.mystic import (
     read_mystic_key,
     run_mystic,
 )
+from ansiradar.obs import ObservationSnapshot
 from ansiradar.poller import SourcePoller
 from ansiradar.radar.engine import RadarEngine
 from ansiradar.sources import SourceSpec
@@ -211,11 +212,12 @@ def test_property_style_q_exits_on_first_press():
         "key='Q'",
         "action='quit'",
     ]
-    assert events[-5:] == [
-        "cleanup_start",
-        "restore_write_start",
+    assert events[-6:] == [
         "restore_write_done",
         "cleanup_done",
+        "closing radar source",
+        "radar source closed",
+        "resource_cleanup_complete",
         "return_to_mystic",
     ]
     assert fake.output.count("\x1b[0m\x1b[?25h") == 1
@@ -257,10 +259,12 @@ def test_restore_can_be_disabled_without_final_output():
         log=events.append,
     ) == "quit"
     assert fake.output == ["\x1b[2J\x1b[H\x1b[?25l"]
-    assert events[-4:] == [
-        "cleanup_start",
+    assert events[-6:] == [
         "restore_skipped",
         "cleanup_done",
+        "closing radar source",
+        "radar source closed",
+        "resource_cleanup_complete",
         "return_to_mystic",
     ]
 
@@ -432,3 +436,47 @@ def test_source_startup_failure_is_controlled_by_frontend(tmp_path):
             receiver_lat=58.0,
             receiver_lon=6.0,
         )
+
+
+def test_mystic_closes_every_resource_created_by_source_constructor(monkeypatch):
+    created = []
+
+    class TrackingSource:
+        kind = "tracked"
+
+        def __init__(self):
+            self.closed = False
+            created.append(self)
+
+        def poll(self):
+            return ObservationSnapshot(
+                generated_at=0.0,
+                source="tracked",
+                observations=(),
+                messages=None,
+                skipped=0,
+            )
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr("ansiradar.mystic.build_source", lambda spec: TrackingSource())
+    engine, source = build_mystic_engine(
+        SourceSpec(kind="file", file="unused"),
+        receiver_lat=58.0,
+        receiver_lon=6.0,
+    )
+    assert source is created[0]
+
+    events = []
+    assert run_mystic(
+        FakeMystic(["Q"]),
+        engine,
+        MysticConfig(),
+        clock=lambda: 0.0,
+        sleep=lambda _: None,
+        log=events.append,
+    ) == "quit"
+    assert source.closed
+    assert events.index("resource_cleanup_complete") < len(events) - 1
+    assert events[-1] == "return_to_mystic"

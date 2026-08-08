@@ -1,5 +1,6 @@
 """Source selection and construction from CLI/configuration."""
 
+import logging
 from dataclasses import dataclass
 from typing import Literal
 
@@ -66,6 +67,9 @@ def build_source(
     client: httpx.Client | None = None,
 ) -> AircraftSource:
     validate_spec(spec)
+    logging.getLogger("ansiradar.resources").info(
+        "creating radar source kind=%s", spec.kind
+    )
     if spec.kind == "url":
         return UrlSource(
             spec.url,  # type: ignore[arg-type]

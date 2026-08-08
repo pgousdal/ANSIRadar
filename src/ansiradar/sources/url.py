@@ -1,6 +1,7 @@
 """HTTP(S) aircraft JSON source with bounded, validated reads."""
 
 import json
+import logging
 
 import httpx
 
@@ -46,6 +47,7 @@ class UrlSource:
 
     def _transport(self) -> httpx.Client:
         if self._client is None:
+            logging.getLogger("ansiradar.resources").info("creating HTTP client")
             self._client = httpx.Client(
                 timeout=self.timeout,
                 headers={"User-Agent": self.user_agent},
@@ -56,6 +58,7 @@ class UrlSource:
 
     def close(self) -> None:
         if self._owned_client and self._client is not None:
+            logging.getLogger("ansiradar.resources").info("closing HTTP client")
             self._client.close()
             self._client = None
             self._owned_client = False

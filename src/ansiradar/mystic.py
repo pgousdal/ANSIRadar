@@ -146,6 +146,13 @@ def build_mystic_engine(
         engine.apply_manual(startup)
         return engine, source
     except Exception as error:
+        close = locals().get("source")
+        close_method = getattr(close, "close", None)
+        if callable(close_method):
+            try:
+                close_method()
+            except Exception:
+                pass
         raise MysticStartupError(str(error)) from error
 
 
@@ -326,6 +333,18 @@ def run_mystic(
             sleep(config.idle_sleep)
     finally:
         cleanup_mystic_terminal(terminal, profile, log=log)
+        if log is not None:
+            log("closing radar source")
+        try:
+            engine.close()
+        except Exception as error:  # noqa: BLE001 - cleanup must reach Mystic
+            if log is not None:
+                log(f"radar_source_close_failed={error!r}")
+        else:
+            if log is not None:
+                log("radar source closed")
+        if log is not None:
+            log("resource_cleanup_complete")
         if log is not None:
             log("return_to_mystic")
 

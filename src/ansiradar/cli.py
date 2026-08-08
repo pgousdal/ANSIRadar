@@ -632,25 +632,31 @@ def _make_engine(
     source: AircraftSource | None = None,
 ) -> RadarEngine:
     source = source or build_source(spec)
-    poller = SourcePoller(
-        source,
-        poll_interval=args.refresh,
-    )
-    tracks = TrackManager(
-        position_stale_age=args.pos_stale,
-        aircraft_stale_age=args.track_stale,
-        removal_age=args.removal_age,
-        max_tracks=args.max_tracks,
-    )
-    engine = RadarEngine(
-        poller,
-        tracks,
-        receiver_lat=lat,
-        receiver_lon=lon,
-        max_age=args.max_age,
-    )
-    engine.poller._kind = spec.kind
-    return engine
+    try:
+        poller = SourcePoller(
+            source,
+            poll_interval=args.refresh,
+        )
+        tracks = TrackManager(
+            position_stale_age=args.pos_stale,
+            aircraft_stale_age=args.track_stale,
+            removal_age=args.removal_age,
+            max_tracks=args.max_tracks,
+        )
+        engine = RadarEngine(
+            poller,
+            tracks,
+            receiver_lat=lat,
+            receiver_lon=lon,
+            max_age=args.max_age,
+        )
+        engine.poller._kind = spec.kind
+        return engine
+    except Exception:
+        close = getattr(source, "close", None)
+        if callable(close):
+            close()
+        raise
 
 
 def _radar(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
@@ -670,23 +676,26 @@ def _radar(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     engine = _make_engine(args, spec, lat, lon)
     capabilities = resolve_capabilities(charset=args.charset, color=args.color)
     transport = LocalTTYTransport()
-    with TerminalSession(alternate=not args.no_alt_screen):
-        result = run_interactive(
-            engine,
-            transport,
-            RuntimeConfig(
-                width=capabilities.width,
-                height=capabilities.height,
-                charset=args.charset,
-                color=capabilities.color,
-                range_nm=args.range_nm,
-                label=args.label,
-                units=args.units,
-                poll_timeout=min(0.1, args.refresh),
-                send_setup=True,
-                clear_on_exit=True,
-            ),
-        )
+    try:
+        with TerminalSession(alternate=not args.no_alt_screen):
+            result = run_interactive(
+                engine,
+                transport,
+                RuntimeConfig(
+                    width=capabilities.width,
+                    height=capabilities.height,
+                    charset=args.charset,
+                    color=capabilities.color,
+                    range_nm=args.range_nm,
+                    label=args.label,
+                    units=args.units,
+                    poll_timeout=min(0.1, args.refresh),
+                    send_setup=True,
+                    clear_on_exit=True,
+                ),
+            )
+    finally:
+        engine.close()
     return EXIT_OK if result.reason in {"quit", "disconnect"} else EXIT_UNAVAILABLE
 
 

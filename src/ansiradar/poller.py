@@ -66,6 +66,7 @@ class SourcePoller:
         self._skipped = 0
         self._exhausted = False
         self._kind = getattr(source, "kind", type(source).__name__.lower())
+        self._closed = False
 
     @property
     def kind(self) -> str:
@@ -157,3 +158,12 @@ class SourcePoller:
 
     def last_snapshot(self) -> ObservationSnapshot | None:
         return self._last_snapshot
+
+    def close(self) -> None:
+        """Close the source owned by this poller, at most once."""
+        if self._closed:
+            return
+        self._closed = True
+        close = getattr(self.source, "close", None)
+        if callable(close):
+            close()
