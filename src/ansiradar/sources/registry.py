@@ -1,15 +1,15 @@
 """Source selection and construction from CLI/configuration."""
 
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-import httpx
-
-from ansiradar.replay import ReplaySource
 from ansiradar.sources.base import AircraftSource, UnsupportedSource
-from ansiradar.sources.file import FileSource
-from ansiradar.sources.url import UrlSource
+
+if TYPE_CHECKING:
+    import httpx
 
 Kind = Literal["url", "file", "replay"]
 
@@ -71,6 +71,8 @@ def build_source(
         "creating radar source kind=%s", spec.kind
     )
     if spec.kind == "url":
+        from ansiradar.sources.url import UrlSource
+
         return UrlSource(
             spec.url,  # type: ignore[arg-type]
             timeout=spec.timeout,
@@ -79,7 +81,11 @@ def build_source(
             client=client,
         )
     if spec.kind == "replay":
+        from ansiradar.replay import ReplaySource
+
         return ReplaySource(spec.replay_file)  # type: ignore[arg-type]
+    from ansiradar.sources.file import FileSource
+
     return FileSource(
         spec.file,  # type: ignore[arg-type]
         max_bytes=spec.max_bytes,

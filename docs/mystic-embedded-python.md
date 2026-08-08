@@ -69,6 +69,12 @@ They can be overridden with `ANSIRADAR_SOURCE`, `ANSIRADAR_FILE`,
 `ANSIRADAR_RANGE_NM`. The file source accepts readsb/dump1090-compatible
 `aircraft.json`; the existing ANSIRadar source registry is used.
 
+Local file source is supported and recommended for Mystic embedded Python.
+Do not use the URL source inside Mystic: on the tested Mystic 1.12 A48 host,
+importing its `httpx` network backend causes embedded interpreter teardown to
+disconnect the Telnet session. URL sources remain supported in normal CLI
+usage.
+
 The renderer defaults to 80x25. Frames use explicit cursor positioning for
 every full refresh, clear the screen, and contain no row separators. The
 nominal screen is 80x25, but Mystic uses a conservative 79x24 drawing area:
