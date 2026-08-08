@@ -74,8 +74,10 @@ class MysticTerminalAdapter:
             available = available()
         return bool(available)
 
-    def read_key(self) -> str | None:
-        if not self.input_available():
+    def read_key(self, *, available: bool | None = None) -> str | None:
+        if available is None:
+            available = self.input_available()
+        if not available:
             return None
         return map_key(self.api.onekey(self.KEY_LIST, False))
 
@@ -235,9 +237,25 @@ def run_mystic(
     terminal = MysticTerminalAdapter(api)
     state = new_state(config)
     last_poll = -config.poll_interval
-    terminal.write_raw("\x1b[2J\x1b[H\x1b[?25l")
     try:
+        terminal.write_raw("\x1b[2J\x1b[H\x1b[?25l")
         while True:
+            available = terminal.input_available()
+            if log is not None:
+                log(f"key_available={available}")
+            key = terminal.read_key(available=available)
+            if key is not None:
+                if log is not None:
+                    log(f"key={key!r}")
+                action = apply_key(state, key, len(engine.frame().items))
+                if log is not None and action is not None:
+                    log(f"action={action!r}")
+                if action == "quit":
+                    return "quit"
+                if action == "refresh":
+                    engine.poller.force_poll()
+                if key == "ESC" and state.help_overlay:
+                    state.help_overlay = False
             now = clock()
             if not state.paused and now - last_poll >= config.poll_interval:
                 engine.step()
@@ -277,20 +295,17 @@ def run_mystic(
                 positioned=True,
             )
             terminal.write_raw(output)
-            key = terminal.read_key()
-            if key is not None:
-                action = apply_key(state, key, len(items))
-                if log is not None and action is not None:
-                    log(action)
-                if action == "quit":
-                    return "quit"
-                if action == "refresh":
-                    engine.poller.force_poll()
-                if key == "ESC" and state.help_overlay:
-                    state.help_overlay = False
             sleep(config.idle_sleep)
     finally:
-        terminal.write_raw("\x1b[0m\x1b[?25h\x1b[2J\x1b[H")
+        if log is not None:
+            log("restoring_terminal")
+        try:
+            terminal.write_raw("\x1b[0m\x1b[?25h")
+        except Exception as error:  # noqa: BLE001 - return to Mystic regardless
+            if log is not None:
+                log(f"terminal_restore_failed={error!r}")
+        if log is not None:
+            log("return_to_mystic")
 
 
 def _help(buffer: ScreenBuffer) -> None:

@@ -54,6 +54,36 @@ class PropertyMystic:
         return self.keys.pop(0)
 
 
+class AuditedMystic:
+    def __init__(self, *keys):
+        self._keys = list(keys)
+        self.output = []
+        self.keypressed_reads = 0
+        self.onekey_calls = 0
+
+    @property
+    def keypressed(self):
+        self.keypressed_reads += 1
+        return bool(self._keys)
+
+    def rwrite(self, text):
+        self.output.append(text)
+
+    def onekey(self, keys, echo):
+        del keys, echo
+        self.onekey_calls += 1
+        return self._keys.pop(0)
+
+    def close(self):
+        raise AssertionError("Mystic API must not be closed")
+
+    def shutdown(self):
+        raise AssertionError("Mystic API must not be shut down")
+
+    def disconnect(self):
+        raise AssertionError("Mystic API must not be disconnected")
+
+
 def engine():
     source = FileSource(str(FIXTURE))
     poller = SourcePoller(source, poll_interval=1, clock=lambda: 0.0)
@@ -138,22 +168,51 @@ def test_q_exits_on_first_press_and_state_does_not_leak():
         )
         == "quit"
     )
-    assert len(first.output) == 3
-    assert len(second.output) == 3
+    assert len(first.output) == 2
+    assert len(second.output) == 2
 
 
 def test_property_style_q_exits_on_first_press():
-    fake = PropertyMystic(True, ["Q"])
+    fake = AuditedMystic("Q")
+    events = []
     assert (
         run_mystic(
-            fake, engine(), MysticConfig(), clock=lambda: 0.0, sleep=lambda _: None
+            fake,
+            engine(),
+            MysticConfig(),
+            clock=lambda: 0.0,
+            sleep=lambda _: None,
+            log=events.append,
         )
         == "quit"
     )
+    assert fake.onekey_calls == 1
+    assert fake.keypressed_reads == 1
+    assert events[:3] == ["key_available=True", "key='Q'", "action='quit'"]
+    assert events[-2:] == ["restoring_terminal", "return_to_mystic"]
+    assert fake.output.count("\x1b[0m\x1b[?25h") == 1
+
+
+def test_two_fresh_property_sessions_each_consume_one_q():
+    first = AuditedMystic("Q")
+    second = AuditedMystic("Q")
+    for fake in (first, second):
+        assert (
+            run_mystic(
+                fake,
+                engine(),
+                MysticConfig(),
+                clock=lambda: 0.0,
+                sleep=lambda _: None,
+            )
+            == "quit"
+        )
+        assert fake.onekey_calls == 1
+        assert fake.keypressed_reads == 1
 
 
 def test_renderer_stays_inside_80x25():
-    fake = FakeMystic(["Q"])
+    fake = FakeMystic(["R", "Q"])
     run_mystic(fake, engine(), MysticConfig(), clock=lambda: 0.0, sleep=lambda _: None)
     frame = fake.output[1]
     assert "\n" not in frame
@@ -165,7 +224,7 @@ def test_renderer_stays_inside_80x25():
 
 
 def test_full_refresh_does_not_grow_vertically():
-    fake = FakeMystic(["R", "Q"])
+    fake = FakeMystic(["R", "R", "Q"])
     run_mystic(fake, engine(), MysticConfig(), clock=lambda: 0.0, sleep=lambda _: None)
     frames = fake.output[1:-1]
     assert len(frames) == 2
