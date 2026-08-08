@@ -116,8 +116,10 @@ and rendering failures display a short ANSI-safe message and return to Mystic;
 the traceback is logged only.
 
 On normal quit, `run_mystic()` restores only `ESC[0m` and `ESC[?25h`, then calls
-Mystic's documented `flush()` to deliver pending output. The GZ wrapper calls
-`main()` for side effects, logs `mpy_end`, and reaches EOF; it
+Mystic's documented `flush()` to deliver pending output. Because GZ is a menu
+action, the wrapper then invokes Mystic's documented `GR` menu command with
+`/SKIPEXEC` to unwind to the caller's menu without re-running the GZ action.
+The wrapper calls `main()` for side effects, logs `mpy_end`, and reaches EOF; it
 does not return an integer, raise `SystemExit`, call `bbs.shutdown()`, or close
 any Mystic-owned connection.
 

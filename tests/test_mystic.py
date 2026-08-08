@@ -284,6 +284,7 @@ def test_mpy_main_returns_none_and_falls_through_to_end():
     assert "logging.info(\"mpy_end\")" in source
     assert "sys.exit" not in source
     assert "bbs.shutdown" not in source
+    assert 'bbs.menucmd("GR", "/SKIPEXEC")' in source
 
 
 def test_source_startup_failure_is_controlled_by_frontend(tmp_path):
