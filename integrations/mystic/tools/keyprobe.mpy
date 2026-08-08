@@ -26,7 +26,8 @@ def main():
                 type(value).__name__,
                 repr(value),
             )
-            if str(value).upper() == "Q":
+            key = value[0] if isinstance(value, (tuple, list)) else value
+            if str(key).upper() == "Q":
                 break
         time.sleep(0.05)
     logging.info("keyprobe_end")

@@ -82,7 +82,10 @@ class MysticTerminalAdapter:
         if not callable(getkey):
             raise MysticInputError("Mystic getkey() is unavailable")
         self.last_raw_key = getkey()
-        return map_key(self.last_raw_key)
+        value = self.last_raw_key
+        if isinstance(value, (tuple, list)) and value:
+            value = value[0]
+        return map_key(value)
 
     def term_size(self) -> tuple[int, int]:
         termsize = getattr(self.api, "termsize", None)

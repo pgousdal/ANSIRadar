@@ -103,12 +103,12 @@ def test_mystic_key_mapping_and_fallback():
     fake = FakeMystic(["K"])
     assert read_mystic_key(fake) == "K"
 
-    assert read_mystic_key(PropertyMystic(True, ["J"])) == "J"
+    assert read_mystic_key(PropertyMystic(True, [("J", False)])) == "J"
 
 
 def test_keypressed_property_and_method_compatibility():
     assert read_mystic_key(PropertyMystic(False)) is None
-    assert read_mystic_key(PropertyMystic(True, ["Q"])) == "Q"
+    assert read_mystic_key(PropertyMystic(True, [("Q", False)])) == "Q"
     assert read_mystic_key(FakeMystic(["Q"])) == "Q"
     assert MysticTerminalAdapter(PropertyMystic(True)).term_size() == (80, 25)
 
@@ -179,7 +179,7 @@ def test_q_exits_on_first_press_and_state_does_not_leak():
 
 
 def test_property_style_q_exits_on_first_press():
-    fake = AuditedMystic("Q")
+    fake = AuditedMystic(("Q", False))
     events = []
     assert (
         run_mystic(
@@ -197,7 +197,7 @@ def test_property_style_q_exits_on_first_press():
     assert fake.keypressed_reads == 1
     assert events[:4] == [
         "key_available=True",
-        "getkey raw='Q'",
+        "getkey raw=('Q', False)",
         "key='Q'",
         "action='quit'",
     ]
@@ -206,8 +206,8 @@ def test_property_style_q_exits_on_first_press():
 
 
 def test_two_fresh_property_sessions_each_consume_one_q():
-    first = AuditedMystic("Q")
-    second = AuditedMystic("Q")
+    first = AuditedMystic(("Q", False))
+    second = AuditedMystic(("Q", False))
     for fake in (first, second):
         assert (
             run_mystic(
