@@ -67,6 +67,11 @@ class MysticTerminalAdapter:
         # Mystic receives Python strings; explicitly keep this path ASCII-only.
         self.api.rwrite(text.encode("ascii", "replace").decode("ascii"))
 
+    def flush(self) -> None:
+        flush = getattr(self.api, "flush", None)
+        if callable(flush):
+            flush()
+
     def input_available(self) -> bool:
         available = getattr(self.api, "keypressed", False)
         if callable(available):
@@ -321,6 +326,11 @@ def run_mystic(
         except Exception as error:  # noqa: BLE001 - return to Mystic regardless
             if log is not None:
                 log(f"terminal_restore_failed={error!r}")
+        try:
+            terminal.flush()
+        except Exception as error:  # noqa: BLE001 - return to Mystic regardless
+            if log is not None:
+                log(f"flush_failed={error!r}")
         if log is not None:
             log("return_to_mystic")
 

@@ -61,6 +61,7 @@ class AuditedMystic:
         self.keypressed_reads = 0
         self.onekey_calls = 0
         self.getkey_calls = 0
+        self.flush_calls = 0
 
     @property
     def keypressed(self):
@@ -73,6 +74,9 @@ class AuditedMystic:
     def getkey(self):
         self.getkey_calls += 1
         return self._keys.pop(0)
+
+    def flush(self):
+        self.flush_calls += 1
 
     def onekey(self, keys, echo):
         del keys, echo
@@ -203,6 +207,7 @@ def test_property_style_q_exits_on_first_press():
     ]
     assert events[-2:] == ["restoring_terminal", "return_to_mystic"]
     assert fake.output.count("\x1b[0m\x1b[?25h") == 1
+    assert fake.flush_calls == 1
 
 
 def test_two_fresh_property_sessions_each_consume_one_q():
