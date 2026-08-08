@@ -9,7 +9,7 @@ from typing import Protocol
 
 from ansiradar.poller import SourcePoller
 from ansiradar.radar.engine import RadarEngine
-from ansiradar.render.ansi import serialize_diff, serialize_full
+from ansiradar.render.ansi import serialize_full
 from ansiradar.render.buffer import ScreenBuffer
 from ansiradar.render.radar import RadarRenderOptions, render_radar
 from ansiradar.sources import AircraftSource, SourceSpec, build_source
@@ -19,9 +19,28 @@ from ansiradar.tracking import TrackManager
 class MysticAPI(Protocol):
     def rwrite(self, text: str) -> object: ...
 
-    def keypressed(self) -> bool: ...
-
     def onekey(self, keys: str, echo: bool) -> str: ...
+
+
+@dataclass(frozen=True, slots=True)
+class MysticTerminalProfile:
+    """Conservative terminal contract for Mystic's embedded output path."""
+
+    width: int = 80
+    height: int = 25
+    usable_width: int = 79
+    usable_height: int = 24
+    charset: str = "ascii"
+    color: bool = True
+    full_refresh: bool = True
+
+    def __post_init__(self) -> None:
+        if self.width != 80 or self.height != 25:
+            raise ValueError("Mystic currently requires an 80x25 terminal")
+        if self.usable_width > self.width - 1 or self.usable_height > self.height:
+            raise ValueError("Mystic usable area exceeds nominal terminal")
+        if self.charset != "ascii":
+            raise ValueError("Mystic output currently supports ASCII only")
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,12 +48,44 @@ class MysticConfig:
     width: int = 80
     height: int = 25
     range_nm: float = 100.0
-    charset: str = "cp437"
+    charset: str = "ascii"
     color: bool = True
     label: str = "callsign"
     units: str = "aviation"
     poll_interval: float = 2.0
     idle_sleep: float = 0.05
+
+
+class MysticTerminalAdapter:
+    """Small boundary around the real Mystic Python API."""
+
+    KEY_LIST = "\rQH?JK+=-1234GSLPR"
+
+    def __init__(self, api: MysticAPI) -> None:
+        self.api = api
+
+    def write_raw(self, text: str) -> None:
+        # Mystic receives Python strings; explicitly keep this path ASCII-only.
+        self.api.rwrite(text.encode("ascii", "replace").decode("ascii"))
+
+    def input_available(self) -> bool:
+        available = getattr(self.api, "keypressed", False)
+        if callable(available):
+            available = available()
+        return bool(available)
+
+    def read_key(self) -> str | None:
+        if not self.input_available():
+            return None
+        return map_key(self.api.onekey(self.KEY_LIST, False))
+
+    def term_size(self) -> tuple[int, int]:
+        termsize = getattr(self.api, "termsize", None)
+        if callable(termsize):
+            value = termsize()
+            if isinstance(value, (tuple, list)) and len(value) >= 2:
+                return int(value[0]), int(value[1])
+        return 80, 25
 
 
 @dataclass(slots=True)
@@ -110,14 +161,8 @@ def map_key(value: object) -> str | None:
 
 
 def read_mystic_key(api: MysticAPI) -> str | None:
-    """Read one available key; Mystic owns the actual terminal input."""
-    if not api.keypressed():
-        return None
-    getkey = getattr(api, "getkey", None)
-    if callable(getkey):
-        return map_key(getkey())
-    # onekey is the documented portable fallback. Arrow keys may be unavailable.
-    return map_key(api.onekey("QH?KJ+=-1234GSLPR", False))
+    """Compatibility wrapper for the isolated Mystic input adapter."""
+    return MysticTerminalAdapter(api).read_key()
 
 
 def apply_key(state: MysticState, key: str, item_count: int) -> str | None:
@@ -181,10 +226,16 @@ def run_mystic(
     """Run one fresh Mystic session and return its controlled exit reason."""
     if config.width < 20 or config.height < 10:
         raise ValueError("Mystic screen is too small")
+    profile = MysticTerminalProfile(
+        width=config.width,
+        height=config.height,
+        charset=config.charset,
+        color=config.color,
+    )
+    terminal = MysticTerminalAdapter(api)
     state = new_state(config)
-    previous: ScreenBuffer | None = None
     last_poll = -config.poll_interval
-    api.rwrite("\x1b[2J\x1b[H\x1b[?25l")
+    terminal.write_raw("\x1b[2J\x1b[H\x1b[?25l")
     try:
         while True:
             now = clock()
@@ -204,12 +255,12 @@ def run_mystic(
             )
             rendered = render_radar(
                 items,
-                width=config.width,
-                height=config.height,
+                width=profile.usable_width,
+                height=profile.usable_height,
                 options=RadarRenderOptions(
                     range_nm=state.range_nm,
-                    charset=config.charset,
-                    color=config.color,
+                    charset=profile.charset,
+                    color=profile.color,
                     label=state.label,
                     units=config.units,
                     ground=state.show_ground,
@@ -219,17 +270,14 @@ def run_mystic(
             )
             if state.help_overlay:
                 _help(rendered)
-            if previous is None:
-                output = serialize_full(rendered, color=config.color, positioned=True)
-            else:
-                output = serialize_diff(rendered, previous, color=config.color)
-            if output:
-                api.rwrite(output)
-            previous = rendered
-            if state.help_overlay:
-                # Help is rendered by the normal frame path; Escape closes it.
-                pass
-            key = read_mystic_key(api)
+            output = serialize_full(
+                rendered,
+                color=profile.color,
+                clear=True,
+                positioned=True,
+            )
+            terminal.write_raw(output)
+            key = terminal.read_key()
             if key is not None:
                 action = apply_key(state, key, len(items))
                 if log is not None and action is not None:
@@ -242,7 +290,7 @@ def run_mystic(
                     state.help_overlay = False
             sleep(config.idle_sleep)
     finally:
-        api.rwrite("\x1b[0m\x1b[?25h\x1b[2J\x1b[H")
+        terminal.write_raw("\x1b[0m\x1b[?25h\x1b[2J\x1b[H")
 
 
 def _help(buffer: ScreenBuffer) -> None:

@@ -25,7 +25,10 @@ def main():
     endpoint = _env("ANSIRADAR_FILE", "/home/mystic/doors/data/aircraft.json")
     lat = float(_env("ANSIRADAR_RECEIVER_LAT", "58.662"))
     lon = float(_env("ANSIRADAR_RECEIVER_LON", "6.717"))
-    config = MysticConfig(range_nm=float(_env("ANSIRADAR_RANGE_NM", "100")))
+    config = MysticConfig(
+        range_nm=float(_env("ANSIRADAR_RANGE_NM", "100")),
+        charset="ascii",
+    )
     spec = SourceSpec(
         kind=source,
         file=endpoint if source == "file" else None,

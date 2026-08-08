@@ -6,6 +6,12 @@ Mystic retains ownership of the Telnet session. This path does not read
 `DOOR32.SYS`, duplicate descriptors, negotiate Telnet, use `termios`, or use
 stdin/stdout.
 
+The first real Mystic 1.12 A48 test reached the radar successfully but exposed
+two defects in the initial frontend: it treated `keypressed` as a function and
+sent Unicode/80-column differential frames. Those defects are addressed here.
+Another real Mystic 1.12 A48 test is still required before calling this path
+fully verified.
+
 DOOR32 remains available for generic BBS integration. Embedded Python is the
 preferred Mystic-native integration.
 
@@ -64,8 +70,13 @@ They can be overridden with `ANSIRADAR_SOURCE`, `ANSIRADAR_FILE`,
 `aircraft.json`; the existing ANSIRadar source registry is used.
 
 The renderer defaults to 80x25. Frames use explicit cursor positioning for
-the initial screen, and all writes are clipped to the configured dimensions,
-including the final column.
+every full refresh, clear the screen, and contain no row separators. The
+nominal screen is 80x25, but Mystic uses a conservative 79x24 drawing area:
+column 80 and row 25 are never written by radar frames, avoiding terminal
+wrap/scroll behavior. The status and help overlays are clipped to that area.
+Mystic uses ASCII symbols by default and currently rejects other charsets.
+CP437 is not enabled until its behavior through the actual Mystic embedded
+runtime is verified.
 
 ## Controls
 
@@ -75,11 +86,12 @@ select previous/next aircraft, `K`/`J` are reliable previous/next fallbacks,
 ground aircraft, `S` cycles sorting, `L` cycles labels, `P` pauses, and `R`
 refreshes the source. Enter, Left, Right, and Tab currently do nothing.
 
-Mystic documents `keypressed()`, `onekey()`, and `getkey()`, but does not
-document a portable arrow-key value contract. When `getkey()` is available,
-the adapter accepts symbolic `UP`, `DOWN`, `LEFT`, `RIGHT`, `ESC`, and `ENTER`
-forms. Otherwise it uses documented `onekey()` and the `J`/`K` fallbacks; it
-does not guess raw ANSI escape sequences.
+Mystic documents `keypressed` as a boolean property, not a function. The
+adapter supports that real property and also tolerates method-style fakes used
+by tests. When input is available it calls the documented
+`onekey(keylist, echo)` with `echo=False`; Mystic's documented case-insensitive
+matching makes the required controls work without raw escape parsing. Arrow
+semantics are not claimed. `J`/`K` are the reliable next/previous controls.
 
 ## Logging and Errors
 
@@ -94,6 +106,12 @@ the traceback is logged only.
   explicit source path in the `.mpy`.
 - If the source fails, verify permissions and the absolute `aircraft.json`
   path; the full error is in `mystic.log`.
+- If the screen shows mojibake such as `Γöé`, verify that the updated `.mpy`
+  and package are installed. Mystic output intentionally uses ASCII only;
+  Unicode box-drawing and assumed CP437 conversion are not used.
+- If the screen grows or wraps, verify the updated frontend is in use. Every
+  frame clears the screen and writes only explicit cursor positions in rows
+  1-24 and columns 1-79.
 - If third-party imports fail, install the wheel/dependencies into the Python
   interpreter whose `libpython3.x` Mystic loads, matching its architecture.
 - Verify this integration in a real Mystic 1.12 A48 session. Repository tests
