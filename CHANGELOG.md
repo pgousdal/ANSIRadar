@@ -1,5 +1,13 @@
 # Changelog
 
+## M5
+
+- Harden the standalone C99 80x25 radar for classic ANSI/CP437 terminals.
+- Add strict 80x25 clipping, aspect-correct projection, deterministic collision
+  priority, compact status/table layout, and bounded detail/help overlays.
+- Add source refresh pacing, stale-source indication, character profiles, and
+  expanded deterministic C coverage.
+
 ## 0.5.0
 
 - Add a Mystic Linux DOOR32.SYS interactive BBS door runtime.

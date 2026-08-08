@@ -23,11 +23,13 @@ enum InputKey {
 typedef struct {
     unsigned char bytes[16];
     size_t length;
+    unsigned int idle_ticks;
 } InputDecoder;
 
 void input_decoder_init(InputDecoder *decoder);
 int input_decoder_feed(InputDecoder *decoder, const unsigned char *bytes,
                        size_t length);
 int input_decoder_flush(InputDecoder *decoder);
+int input_decoder_timeout(InputDecoder *decoder);
 
 #endif

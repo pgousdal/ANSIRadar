@@ -9,6 +9,7 @@
 typedef struct {
     char icao[7];
     char callsign[ANSIRADAR80_CALLSIGN_LEN];
+    char squawk[8];
     double latitude;
     double longitude;
     double altitude_ft;
@@ -22,6 +23,7 @@ typedef struct {
     int has_heading;
     int has_vertical;
     int has_seen;
+    int has_squawk;
     int on_ground;
 } Aircraft;
 

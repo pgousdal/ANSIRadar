@@ -2,12 +2,13 @@
 #include "ansiradar80/ansi.h"
 #include "ansiradar80/input.h"
 #include "ansiradar80/radar.h"
+#include "ansiradar80/ui.h"
 
 #include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/select.h>
+#include <sys/time.h>
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
@@ -20,6 +21,12 @@ static void utc_now(char *output, size_t size) {
         return;
     }
     strftime(output, size, "%H:%M:%S", value);
+}
+
+static double elapsed_seconds(void) {
+    struct timeval value;
+    if (gettimeofday(&value, NULL) != 0) return 0.0;
+    return (double)value.tv_sec + (double)value.tv_usec / 1000000.0;
 }
 
 static void overlay_box(Screen *screen, int x, int y, int width, int height) {
@@ -35,7 +42,7 @@ static void overlay_box(Screen *screen, int x, int y, int width, int height) {
     }
 }
 
-static void draw_help(Screen *screen) {
+void ui_draw_help(Screen *screen) {
     overlay_box(screen, 10, 4, 60, 15);
     screen_text(screen, 26, 5, "ANSIRadar 80 controls", 15);
     screen_text(screen, 14, 7, "Arrows select   +/- zoom   Tab sort", 7);
@@ -44,24 +51,40 @@ static void draw_help(Screen *screen) {
     screen_text(screen, 14, 10, "Q quit", 7);
 }
 
-static void draw_details(Screen *screen, const AircraftList *list, const RadarState *state) {
+void ui_draw_details(Screen *screen, const AircraftList *list, const RadarState *state) {
+    size_t order[ANSIRADAR80_MAX_AIRCRAFT];
     const Aircraft *aircraft;
     char line[64];
-    if (list->count == 0 || state->selected >= list->count) return;
-    aircraft = &list->items[state->selected];
-    overlay_box(screen, 26, 4, 30, 14);
+    size_t count = radar_order(list, state, order, ANSIRADAR80_MAX_AIRCRAFT);
+    double distance;
+    double bearing;
+    if (count == 0 || state->selected >= count) return;
+    aircraft = &list->items[order[state->selected]];
+    distance = radar_distance_nm(state->receiver_latitude, state->receiver_longitude,
+                                 aircraft->latitude, aircraft->longitude);
+    bearing = radar_bearing_deg(state->receiver_latitude, state->receiver_longitude,
+                                aircraft->latitude, aircraft->longitude);
+    overlay_box(screen, 25, 3, 32, 16);
     screen_text(screen, 29, 5, aircraft->callsign[0] ? aircraft->callsign : aircraft->icao, 15);
-    snprintf(line, sizeof(line), "Alt: %.0f ft", aircraft->has_altitude ? aircraft->altitude_ft : 0.0);
-    screen_text(screen, 29, 7, line, 7);
-    snprintf(line, sizeof(line), "Speed: %.0f kt", aircraft->has_speed ? aircraft->speed_kt : 0.0);
-    screen_text(screen, 29, 8, line, 7);
-    snprintf(line, sizeof(line), "Heading: %.0f", aircraft->has_heading ? aircraft->heading_deg : 0.0);
-    screen_text(screen, 29, 9, line, 7);
-    snprintf(line, sizeof(line), "Vertical: %.0f ft/min", aircraft->has_vertical ? aircraft->vertical_fpm : 0.0);
-    screen_text(screen, 29, 10, line, 7);
-    screen_text(screen, 29, 12, "ICAO:", 7);
-    screen_text(screen, 35, 12, aircraft->icao, 7);
-    screen_text(screen, 29, 14, "ESC closes", 15);
+    screen_text(screen, 28, 6, "ICAO:", 7);
+    screen_text(screen, 34, 6, aircraft->icao, 7);
+    snprintf(line, sizeof(line), "ALT: %.0f ft", aircraft->has_altitude ? aircraft->altitude_ft : 0.0);
+    screen_text(screen, 28, 8, line, 7);
+    snprintf(line, sizeof(line), "SPD: %.0f kt", aircraft->has_speed ? aircraft->speed_kt : 0.0);
+    screen_text(screen, 28, 9, line, 7);
+    snprintf(line, sizeof(line), "HDG: %.0f", aircraft->has_heading ? aircraft->heading_deg : 0.0);
+    screen_text(screen, 28, 10, line, 7);
+    snprintf(line, sizeof(line), "V/S: %.0f ft/min", aircraft->has_vertical ? aircraft->vertical_fpm : 0.0);
+    screen_text(screen, 28, 11, line, 7);
+    snprintf(line, sizeof(line), "DIST: %.1f nm", distance);
+    screen_text(screen, 28, 12, line, 7);
+    snprintf(line, sizeof(line), "BRG: %.0f", bearing);
+    screen_text(screen, 28, 13, line, 7);
+    snprintf(line, sizeof(line), "SQUAWK: %s", aircraft->has_squawk ? aircraft->squawk : "-");
+    screen_text(screen, 28, 14, line, 7);
+    snprintf(line, sizeof(line), "AGE: %.0fs", aircraft->has_seen ? aircraft->seen_seconds : 0.0);
+    screen_text(screen, 28, 15, line, 7);
+    screen_text(screen, 28, 17, "ESC closes", 15);
 }
 
 static int read_key(int fd, InputDecoder *decoder, double timeout) {
@@ -69,13 +92,15 @@ static int read_key(int fd, InputDecoder *decoder, double timeout) {
     fd_set read_set;
     struct timeval wait;
     int result;
+    result = input_decoder_feed(decoder, NULL, 0);
+    if (result != INPUT_NONE) return result;
     FD_ZERO(&read_set);
     FD_SET(fd, &read_set);
     wait.tv_sec = (long)timeout;
     wait.tv_usec = (long)((timeout - (double)wait.tv_sec) * 1000000.0);
     result = select(fd + 1, &read_set, NULL, NULL, &wait);
     if (result <= 0) {
-        return input_decoder_flush(decoder);
+        return input_decoder_timeout(decoder);
     }
     result = (int)read(fd, bytes, sizeof(bytes));
     if (result <= 0) return INPUT_QUIT;
@@ -97,6 +122,9 @@ int app_run(const AppConfig *config, Provider *provider) {
     int running = 1;
     struct termios original;
     int raw_terminal = 0;
+    double next_poll = 0.0;
+    double now;
+    int have_good = 0;
     if (config == NULL || provider == NULL) return 2;
     memset(&state, 0, sizeof(state));
     state.receiver_latitude = config->receiver_latitude;
@@ -107,6 +135,7 @@ int app_run(const AppConfig *config, Provider *provider) {
     input_decoder_init(&decoder);
     if (config->once) {
         if (!provider->poll(provider, &aircraft, error, sizeof(error))) return 3;
+        have_good = 1;
     } else if (isatty(STDIN_FILENO) && tcgetattr(STDIN_FILENO, &original) == 0) {
         struct termios raw = original;
         raw.c_lflag &= (tcflag_t)~(ICANON | ECHO);
@@ -115,14 +144,28 @@ int app_run(const AppConfig *config, Provider *provider) {
         tcsetattr(STDIN_FILENO, TCSANOW, &raw);
         raw_terminal = 1;
     }
+    memset(state.source_status, 0, sizeof(state.source_status));
+    snprintf(state.source_status, sizeof(state.source_status), "%s",
+             have_good ? "OK" : "NO DATA");
+    state.charset = config->charset;
     while (running) {
-        if (!config->once && !provider->poll(provider, &aircraft, error, sizeof(error))) {
-            /* Keep the last good list during source outages. */
+        now = elapsed_seconds();
+        if (!config->once && now >= next_poll) {
+            AircraftList candidate;
+            if (provider->poll(provider, &candidate, error, sizeof(error))) {
+                aircraft = candidate;
+                have_good = 1;
+                snprintf(state.source_status, sizeof(state.source_status), "OK");
+            } else {
+                snprintf(state.source_status, sizeof(state.source_status),
+                         have_good ? "STALE" : "SOURCE ERR");
+            }
+            next_poll = now + (config->refresh_seconds > 0.0 ? config->refresh_seconds : 2.0);
         }
         utc_now(utc, sizeof(utc));
         radar_render(&current, &aircraft, &state, utc);
-        if (details) draw_details(&current, &aircraft, &state);
-        if (help) draw_help(&current);
+        if (details) ui_draw_details(&current, &aircraft, &state);
+        if (help) ui_draw_help(&current);
         if (config->once) {
             int length = ansi_full(&current, output, sizeof(output), config->color);
             if (length > 0) fwrite(output, 1, (size_t)length, stdout);

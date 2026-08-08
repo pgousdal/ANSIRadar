@@ -13,6 +13,8 @@ typedef struct {
     int color;
     int width;
     int height;
+    int charset;
+    double refresh_seconds;
 } AppConfig;
 
 int app_run(const AppConfig *config, Provider *provider);

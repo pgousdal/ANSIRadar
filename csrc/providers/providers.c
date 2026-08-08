@@ -159,6 +159,9 @@ static void parse_aircraft_object(const char *object, Aircraft *aircraft) {
         return;
     }
     json_string(object, "flight", aircraft->callsign, sizeof(aircraft->callsign));
+    if (json_string(object, "squawk", aircraft->squawk, sizeof(aircraft->squawk))) {
+        aircraft->has_squawk = 1;
+    }
     if (json_number(object, "lat", &aircraft->latitude) &&
         json_number(object, "lon", &aircraft->longitude) &&
         aircraft->latitude >= -90.0 && aircraft->latitude <= 90.0 &&

@@ -13,6 +13,8 @@ static void usage(const char *program) {
     puts("  --range NM               radar range (default 100)");
     puts("  --once                   render one deterministic frame");
     puts("  --color always|never     ANSI color policy");
+    puts("  --charset ascii|cp437    display character profile");
+    puts("  --refresh SECONDS        source refresh interval (default 2)");
     puts("  --width 80 --height 25   classic BBS dimensions");
     puts("  --help                   show this help");
 }
@@ -29,6 +31,8 @@ int main(int argc, char **argv) {
     config.width = 80;
     config.height = 25;
     config.color = 1;
+    config.charset = 1;
+    config.refresh_seconds = 2.0;
     for (i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--help") == 0) {
             usage(argv[0]);
@@ -51,6 +55,10 @@ int main(int argc, char **argv) {
             config.height = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--color") == 0 && i + 1 < argc) {
             config.color = strcmp(argv[++i], "never") != 0;
+        } else if (strcmp(argv[i], "--charset") == 0 && i + 1 < argc) {
+            config.charset = strcmp(argv[++i], "ascii") == 0 ? 0 : 1;
+        } else if (strcmp(argv[i], "--refresh") == 0 && i + 1 < argc) {
+            config.refresh_seconds = strtod(argv[++i], NULL);
         } else {
             fprintf(stderr, "unknown or incomplete option: %s\n", argv[i]);
             return 2;
@@ -59,7 +67,7 @@ int main(int argc, char **argv) {
     if (config.source_path == NULL || config.receiver_latitude < -90.0 ||
         config.receiver_latitude > 90.0 || config.receiver_longitude < -180.0 ||
         config.receiver_longitude > 180.0 || config.range_nm <= 0.0 ||
-        config.width != 80 || config.height != 25) {
+        config.width != 80 || config.height != 25 || config.refresh_seconds <= 0.0) {
         fprintf(stderr, "--file, valid receiver coordinates, and 80x25 are required\n");
         return 2;
     }

@@ -9,6 +9,7 @@ add_library(ansiradar80_core
     csrc/models/aircraft.c
     csrc/providers/providers.c
     csrc/renderer/ansi.c
+    csrc/renderer/charset.c
     csrc/renderer/radar.c
     csrc/renderer/screen.c
     csrc/ui/input.c
@@ -22,11 +23,13 @@ add_executable(ansiradar80
     csrc/ui/radar_view.c
 )
 target_include_directories(ansiradar80 PRIVATE include)
+target_compile_options(ansiradar80 PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(ansiradar80 PRIVATE ansiradar80_core m)
 
 enable_testing()
-add_executable(ansiradar80_test ctests/test_core.c)
+add_executable(ansiradar80_test ctests/test_core.c csrc/ui/radar_view.c)
 target_include_directories(ansiradar80_test PRIVATE include)
+target_compile_options(ansiradar80_test PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(ansiradar80_test PRIVATE ansiradar80_core m)
 add_test(NAME ansiradar80_core COMMAND ansiradar80_test
     ${CMAKE_CURRENT_SOURCE_DIR}/fixtures80/readsb.json)

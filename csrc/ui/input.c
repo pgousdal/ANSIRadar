@@ -74,6 +74,7 @@ int input_decoder_feed(InputDecoder *decoder, const unsigned char *bytes, size_t
     size_t copy;
     int key;
     if (decoder == NULL) return INPUT_NONE;
+    if (bytes == NULL) length = 0;
     copy = length;
     if (copy > sizeof(decoder->bytes) - decoder->length) {
         copy = sizeof(decoder->bytes) - decoder->length;
@@ -81,6 +82,7 @@ int input_decoder_feed(InputDecoder *decoder, const unsigned char *bytes, size_t
     if (bytes != NULL && copy > 0) {
         memcpy(decoder->bytes + decoder->length, bytes, copy);
         decoder->length += copy;
+        decoder->idle_ticks = 0;
     }
     key = parse_key(decoder);
     return key;
@@ -93,4 +95,13 @@ int input_decoder_flush(InputDecoder *decoder) {
         return INPUT_ESCAPE;
     }
     return parse_key(decoder);
+}
+
+int input_decoder_timeout(InputDecoder *decoder) {
+    if (decoder == NULL) return INPUT_NONE;
+    if (decoder->length == 0) return INPUT_NONE;
+    ++decoder->idle_ticks;
+    if (decoder->idle_ticks < 2U) return INPUT_NONE;
+    decoder->idle_ticks = 0;
+    return input_decoder_flush(decoder);
 }

@@ -21,3 +21,10 @@ M4 adds `parse_door32`, `DescriptorSocketTransport`, `LocalTTYTransport`, and
 DOOR32 path is parsed before caller output, the supplied descriptor is duplicated
 for ownership safety, and `BBSTerminalProfile` performs explicit CP437/ASCII/
 Unicode encoding without local TTY probing.
+
+M5 keeps that Python Mystic transport/runtime as the production DOOR32 path and
+hardens the separate C99 `ansiradar80` path as a classic 80x25 renderer. The C
+provider table returns normalized aircraft to a virtual screen; it has no
+knowledge of DOOR32 or Python. This deliberately avoids introducing a second
+native C DOOR32 implementation while allowing the C renderer to be tested
+independently with files and CSV replay.
