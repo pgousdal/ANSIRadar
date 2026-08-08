@@ -1,5 +1,9 @@
 import ast
+import logging
 import re
+import runpy
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -283,8 +287,78 @@ def test_mpy_main_returns_none_and_falls_through_to_end():
     source = path.read_text()
     assert "logging.info(\"mpy_end\")" in source
     assert "sys.exit" not in source
+    assert "SystemExit" not in source
     assert "bbs.shutdown" not in source
-    assert 'bbs.menucmd("GR", "/SKIPEXEC")' in source
+    assert "bbs.menucmd" not in source
+
+
+def test_mpy_q_completion_returns_to_mystic_without_commands(monkeypatch):
+    path = Path(__file__).parents[1] / "integrations" / "mystic" / "ansiradar.mpy"
+    events = []
+
+    class FakeLogger:
+        def info(self, message):
+            events.append(message)
+
+    class FakeBbs(types.ModuleType):
+        def __init__(self):
+            super().__init__("mystic_bbs")
+            self.calls = []
+
+        def rwrite(self, text):
+            self.calls.append(("rwrite", text))
+
+        def __getattr__(self, name):
+            def unexpected_call(*args, **kwargs):
+                self.calls.append((name, args, kwargs))
+                raise AssertionError(f"unexpected Mystic API call: {name}")
+
+            return unexpected_call
+
+    bbs = FakeBbs()
+    mystic = types.ModuleType("ansiradar.mystic")
+    mystic.MysticConfig = lambda **kwargs: types.SimpleNamespace(
+        **kwargs, poll_interval=1.0
+    )
+    mystic.build_mystic_engine = lambda *args, **kwargs: (object(), object())
+
+    def fake_run_mystic(*args, **kwargs):
+        kwargs["log"]("action='quit'")
+        kwargs["log"]("restoring_terminal")
+        return "quit"
+
+    mystic.run_mystic = fake_run_mystic
+    sources = types.ModuleType("ansiradar.sources")
+    sources.SourceSpec = lambda **kwargs: kwargs
+    monkeypatch.setitem(sys.modules, "mystic_bbs", bbs)
+    monkeypatch.setitem(sys.modules, "ansiradar.mystic", mystic)
+    monkeypatch.setitem(sys.modules, "ansiradar.sources", sources)
+    monkeypatch.setattr("logging.basicConfig", lambda **kwargs: None)
+    monkeypatch.setattr("logging.info", events.append)
+    real_get_logger = logging.getLogger
+
+    def get_logger(name=None):
+        if name == "ansiradar.mystic":
+            return FakeLogger()
+        return real_get_logger(name)
+
+    monkeypatch.setattr("logging.getLogger", get_logger)
+
+    namespace = runpy.run_path(str(path), run_name="__main__")
+
+    assert namespace["main"]() is None
+    assert events == [
+        "startup",
+        "action='quit'",
+        "restoring_terminal",
+        "run_mystic_returned",
+        "main_return",
+        "mpy_end",
+        "action='quit'",
+        "restoring_terminal",
+        "run_mystic_returned",
+    ]
+    assert bbs.calls == []
 
 
 def test_source_startup_failure_is_controlled_by_frontend(tmp_path):

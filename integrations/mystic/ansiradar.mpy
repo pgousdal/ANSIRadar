@@ -46,9 +46,7 @@ def main():
         config,
         log=lambda action: logging.getLogger("ansiradar.mystic").info(action),
     )
-    # GZ is a menu action; explicitly unwind to the caller's menu without
-    # executing this action again. GR is Mystic's documented menu return.
-    bbs.menucmd("GR", "/SKIPEXEC")
+    logging.getLogger("ansiradar.mystic").info("run_mystic_returned")
     return None
 
 
@@ -60,9 +58,8 @@ try:
     )
     logging.info("startup")
     main()
+    logging.info("main_return")
     logging.info("mpy_end")
-except SystemExit as error:
-    logging.error("system_exit code=%r", error.code)
 except Exception:
     try:
         logging.exception("controlled failure")
