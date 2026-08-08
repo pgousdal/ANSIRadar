@@ -33,6 +33,8 @@ class MysticTerminalProfile:
     charset: str = "ascii"
     color: bool = True
     full_refresh: bool = True
+    restore_on_exit: bool = True
+    flush_on_exit: bool = False
 
     def __post_init__(self) -> None:
         if self.width != 80 or self.height != 25:
@@ -54,6 +56,8 @@ class MysticConfig:
     units: str = "aviation"
     poll_interval: float = 2.0
     idle_sleep: float = 0.05
+    restore_on_exit: bool = True
+    flush_on_exit: bool = False
 
 
 class MysticTerminalAdapter:
@@ -252,6 +256,8 @@ def run_mystic(
         height=config.height,
         charset=config.charset,
         color=config.color,
+        restore_on_exit=config.restore_on_exit,
+        flush_on_exit=config.flush_on_exit,
     )
     terminal = MysticTerminalAdapter(api)
     state = new_state(config)
@@ -319,20 +325,46 @@ def run_mystic(
             terminal.write_raw(output)
             sleep(config.idle_sleep)
     finally:
+        cleanup_mystic_terminal(terminal, profile, log=log)
         if log is not None:
-            log("restoring_terminal")
+            log("return_to_mystic")
+
+
+def cleanup_mystic_terminal(
+    terminal: MysticTerminalAdapter,
+    profile: MysticTerminalProfile,
+    *,
+    log: Callable[[str], None] | None = None,
+) -> None:
+    """Apply only the explicitly enabled, Mystic-safe exit operations."""
+    if log is not None:
+        log("cleanup_start")
+    if profile.restore_on_exit:
+        if log is not None:
+            log("restore_write_start")
         try:
             terminal.write_raw("\x1b[0m\x1b[?25h")
         except Exception as error:  # noqa: BLE001 - return to Mystic regardless
             if log is not None:
                 log(f"terminal_restore_failed={error!r}")
+        else:
+            if log is not None:
+                log("restore_write_done")
+    elif log is not None:
+        log("restore_skipped")
+    if profile.flush_on_exit:
+        if log is not None:
+            log("flush_start")
         try:
             terminal.flush()
         except Exception as error:  # noqa: BLE001 - return to Mystic regardless
             if log is not None:
                 log(f"flush_failed={error!r}")
-        if log is not None:
-            log("return_to_mystic")
+        else:
+            if log is not None:
+                log("flush_done")
+    if log is not None:
+        log("cleanup_done")
 
 
 def _help(buffer: ScreenBuffer) -> None:

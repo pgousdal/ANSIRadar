@@ -127,6 +127,8 @@ def test_mystic_profile_is_ascii_and_conservative():
     assert (profile.usable_width, profile.usable_height) == (79, 24)
     assert profile.charset == "ascii"
     assert profile.full_refresh
+    assert profile.restore_on_exit
+    assert not profile.flush_on_exit
 
 
 def test_controls_are_deterministic():
@@ -209,9 +211,58 @@ def test_property_style_q_exits_on_first_press():
         "key='Q'",
         "action='quit'",
     ]
-    assert events[-2:] == ["restoring_terminal", "return_to_mystic"]
+    assert events[-5:] == [
+        "cleanup_start",
+        "restore_write_start",
+        "restore_write_done",
+        "cleanup_done",
+        "return_to_mystic",
+    ]
     assert fake.output.count("\x1b[0m\x1b[?25h") == 1
-    assert fake.flush_calls == 1
+    assert fake.flush_calls == 0
+
+
+def test_default_quit_does_not_call_flush_and_has_exact_restore_output():
+    class FlushMustNotBeCalled(AuditedMystic):
+        def flush(self):
+            raise AssertionError("normal Mystic quit must not flush")
+
+    fake = FlushMustNotBeCalled(("Q", False))
+    events = []
+    assert (
+        run_mystic(
+            fake,
+            engine(),
+            MysticConfig(),
+            clock=lambda: 0.0,
+            sleep=lambda _: None,
+            log=events.append,
+        )
+        == "quit"
+    )
+    assert fake.output[-1] == "\x1b[0m\x1b[?25h"
+    assert "flush_start" not in events
+    assert "flush_done" not in events
+
+
+def test_restore_can_be_disabled_without_final_output():
+    fake = AuditedMystic(("Q", False))
+    events = []
+    assert run_mystic(
+        fake,
+        engine(),
+        MysticConfig(restore_on_exit=False),
+        clock=lambda: 0.0,
+        sleep=lambda _: None,
+        log=events.append,
+    ) == "quit"
+    assert fake.output == ["\x1b[2J\x1b[H\x1b[?25l"]
+    assert events[-4:] == [
+        "cleanup_start",
+        "restore_skipped",
+        "cleanup_done",
+        "return_to_mystic",
+    ]
 
 
 def test_two_fresh_property_sessions_each_consume_one_q():
@@ -324,7 +375,11 @@ def test_mpy_q_completion_returns_to_mystic_without_commands(monkeypatch):
 
     def fake_run_mystic(*args, **kwargs):
         kwargs["log"]("action='quit'")
-        kwargs["log"]("restoring_terminal")
+        kwargs["log"]("cleanup_start")
+        kwargs["log"]("restore_write_start")
+        kwargs["log"]("restore_write_done")
+        kwargs["log"]("cleanup_done")
+        kwargs["log"]("return_to_mystic")
         return "quit"
 
     mystic.run_mystic = fake_run_mystic
@@ -350,12 +405,20 @@ def test_mpy_q_completion_returns_to_mystic_without_commands(monkeypatch):
     assert events == [
         "startup",
         "action='quit'",
-        "restoring_terminal",
+        "cleanup_start",
+        "restore_write_start",
+        "restore_write_done",
+        "cleanup_done",
+        "return_to_mystic",
         "run_mystic_returned",
         "main_return",
         "mpy_end",
         "action='quit'",
-        "restoring_terminal",
+        "cleanup_start",
+        "restore_write_start",
+        "restore_write_done",
+        "cleanup_done",
+        "return_to_mystic",
         "run_mystic_returned",
     ]
     assert bbs.calls == []

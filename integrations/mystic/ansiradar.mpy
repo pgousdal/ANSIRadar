@@ -16,6 +16,10 @@ def _env(name, default):
     return os.environ.get(name, default)
 
 
+def _env_bool(name, default):
+    return _env(name, "1" if default else "0").casefold() in {"1", "true", "yes", "on"}
+
+
 def main():
     from ansiradar.mystic import MysticConfig, build_mystic_engine, run_mystic
     from ansiradar.sources import SourceSpec
@@ -27,6 +31,8 @@ def main():
     config = MysticConfig(
         range_nm=float(_env("ANSIRADAR_RANGE_NM", "100")),
         charset="ascii",
+        restore_on_exit=_env_bool("ANSIRADAR_MYSTIC_RESTORE_ON_EXIT", True),
+        flush_on_exit=_env_bool("ANSIRADAR_MYSTIC_FLUSH_ON_EXIT", False),
     )
     spec = SourceSpec(
         kind=source,

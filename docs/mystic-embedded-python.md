@@ -115,13 +115,44 @@ startup, key availability transitions, raw `getkey` values, key actions,
 and rendering failures display a short ANSI-safe message and return to Mystic;
 the traceback is logged only.
 
-On normal quit, `run_mystic()` restores only `ESC[0m` and `ESC[?25h`, then calls
-Mystic's documented `flush()` to deliver pending output. A GZ script returns to
-its calling menu by completing normally and reaching script EOF; it must not
-invoke `GR` (or another menu navigation command) to unwind the menu context.
-The wrapper calls `main()` for side effects, logs `main_return` and `mpy_end`,
-and reaches EOF. It does not return an integer, raise `SystemExit`, call
-`bbs.shutdown()`, or close any Mystic-owned connection.
+On normal quit, `run_mystic()` writes only `ESC[0m` and `ESC[?25h`. It does not
+call Mystic's `flush()` by default. A GZ script returns to its calling menu by
+completing normally and reaching script EOF; it must not invoke `GR` (or
+another menu navigation command) to unwind the menu context. The wrapper calls
+`main()` for side effects, logs `main_return` and `mpy_end`, and reaches EOF. It
+does not return an integer, raise `SystemExit`, call `bbs.shutdown()`, or close
+any Mystic-owned connection.
+
+Exit cleanup is controlled by `MysticConfig`. The defaults are
+`restore_on_exit=True` and `flush_on_exit=False`. The restore output is exactly
+`ESC[0mESC[?25h`; no screen clear, cursor movement, menu command, or Telnet
+control is sent during cleanup. For diagnostics, set
+`ANSIRADAR_MYSTIC_RESTORE_ON_EXIT=0` to make cleanup produce no final output.
+`ANSIRADAR_MYSTIC_FLUSH_ON_EXIT` defaults to `0` and should remain disabled for
+the normal GZ return path.
+
+## Real Mystic A/B Test
+
+Run the same GZ menu entry on the actual Mystic 1.12 A48 system and press Q.
+Keep the normal configuration for Test A:
+
+```console
+ANSIRADAR_MYSTIC_FLUSH_ON_EXIT=0 ANSIRADAR_MYSTIC_RESTORE_ON_EXIT=1
+```
+
+If the Telnet session still disconnects, repeat as Test B:
+
+```console
+ANSIRADAR_MYSTIC_FLUSH_ON_EXIT=0 ANSIRADAR_MYSTIC_RESTORE_ON_EXIT=0
+```
+
+The variables must be present in the environment inherited by the GZ process,
+or the equivalent values can be supplied through the Mystic launch setup.
+Inspect `mystic.log` after each run. Test A distinguishes the old `flush()`
+behavior from final ANSI output; Test B determines whether the remaining issue
+is caused by the final ANSI restore itself. Repository fakes cannot validate
+the embedded loader or Mystic's real terminal lifecycle, so do not call the
+disconnect fixed until one of these tests succeeds on Mystic 1.12 A48.
 
 ## Troubleshooting
 
