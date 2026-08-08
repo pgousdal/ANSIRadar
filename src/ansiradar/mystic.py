@@ -19,7 +19,7 @@ from ansiradar.tracking import TrackManager
 class MysticAPI(Protocol):
     def rwrite(self, text: str) -> object: ...
 
-    def onekey(self, keys: str, echo: bool) -> str: ...
+    def getkey(self) -> object: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,10 +59,9 @@ class MysticConfig:
 class MysticTerminalAdapter:
     """Small boundary around the real Mystic Python API."""
 
-    KEY_LIST = "\rQH?JK+=-1234GSLPR"
-
     def __init__(self, api: MysticAPI) -> None:
         self.api = api
+        self.last_raw_key: object = None
 
     def write_raw(self, text: str) -> None:
         # Mystic receives Python strings; explicitly keep this path ASCII-only.
@@ -79,7 +78,11 @@ class MysticTerminalAdapter:
             available = self.input_available()
         if not available:
             return None
-        return map_key(self.api.onekey(self.KEY_LIST, False))
+        getkey = getattr(self.api, "getkey", None)
+        if not callable(getkey):
+            raise MysticInputError("Mystic getkey() is unavailable")
+        self.last_raw_key = getkey()
+        return map_key(self.last_raw_key)
 
     def term_size(self) -> tuple[int, int]:
         termsize = getattr(self.api, "termsize", None)
@@ -103,6 +106,10 @@ class MysticState:
 
 class MysticStartupError(RuntimeError):
     """A source or engine could not be initialized for an embedded session."""
+
+
+class MysticInputError(RuntimeError):
+    """Mystic cannot provide a nonblocking queued-key reader."""
 
 
 def build_mystic_engine(
@@ -138,9 +145,13 @@ def new_state(config: MysticConfig) -> MysticState:
 def map_key(value: object) -> str | None:
     """Normalize Mystic key values without interpreting terminal input bytes."""
     if isinstance(value, int):
-        value = {13: "ENTER", 27: "ESC", 9: "TAB", 256: "UP", 257: "DOWN"}.get(
-            value, ""
-        )
+        value = {
+            13: "ENTER",
+            27: "ESC",
+            9: "TAB",
+            256: "UP",
+            257: "DOWN",
+        }.get(value, chr(value) if 32 <= value <= 126 else "")
     if not isinstance(value, str):
         return None
     names = {
@@ -237,15 +248,18 @@ def run_mystic(
     terminal = MysticTerminalAdapter(api)
     state = new_state(config)
     last_poll = -config.poll_interval
+    last_available: bool | None = None
     try:
         terminal.write_raw("\x1b[2J\x1b[H\x1b[?25l")
         while True:
             available = terminal.input_available()
-            if log is not None:
+            if log is not None and available != last_available:
                 log(f"key_available={available}")
+            last_available = available
             key = terminal.read_key(available=available)
             if key is not None:
                 if log is not None:
+                    log(f"getkey raw={terminal.last_raw_key!r}")
                     log(f"key={key!r}")
                 action = apply_key(state, key, len(engine.frame().items))
                 if log is not None and action is not None:

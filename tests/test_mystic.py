@@ -1,3 +1,4 @@
+import ast
 import re
 from pathlib import Path
 
@@ -5,6 +6,7 @@ import pytest
 
 from ansiradar.mystic import (
     MysticConfig,
+    MysticInputError,
     MysticStartupError,
     MysticState,
     MysticTerminalAdapter,
@@ -35,8 +37,7 @@ class FakeMystic:
     def keypressed(self):
         return bool(self.keys)
 
-    def onekey(self, keys, echo):
-        del keys, echo
+    def getkey(self):
         return self.keys.pop(0)
 
 
@@ -49,8 +50,7 @@ class PropertyMystic:
     def rwrite(self, text):
         self.output.append(text)
 
-    def onekey(self, keys, echo):
-        del keys, echo
+    def getkey(self):
         return self.keys.pop(0)
 
 
@@ -60,6 +60,7 @@ class AuditedMystic:
         self.output = []
         self.keypressed_reads = 0
         self.onekey_calls = 0
+        self.getkey_calls = 0
 
     @property
     def keypressed(self):
@@ -69,10 +70,14 @@ class AuditedMystic:
     def rwrite(self, text):
         self.output.append(text)
 
+    def getkey(self):
+        self.getkey_calls += 1
+        return self._keys.pop(0)
+
     def onekey(self, keys, echo):
         del keys, echo
         self.onekey_calls += 1
-        return self._keys.pop(0)
+        raise AssertionError("onekey must not be used by the radar event loop")
 
     def close(self):
         raise AssertionError("Mystic API must not be closed")
@@ -94,6 +99,7 @@ def engine():
 def test_mystic_key_mapping_and_fallback():
     assert map_key("KEY_UP") == "UP"
     assert map_key(27) == "ESC"
+    assert map_key(ord("Q")) == "Q"
     fake = FakeMystic(["K"])
     assert read_mystic_key(fake) == "K"
 
@@ -186,9 +192,15 @@ def test_property_style_q_exits_on_first_press():
         )
         == "quit"
     )
-    assert fake.onekey_calls == 1
+    assert fake.getkey_calls == 1
+    assert fake.onekey_calls == 0
     assert fake.keypressed_reads == 1
-    assert events[:3] == ["key_available=True", "key='Q'", "action='quit'"]
+    assert events[:4] == [
+        "key_available=True",
+        "getkey raw='Q'",
+        "key='Q'",
+        "action='quit'",
+    ]
     assert events[-2:] == ["restoring_terminal", "return_to_mystic"]
     assert fake.output.count("\x1b[0m\x1b[?25h") == 1
 
@@ -207,7 +219,8 @@ def test_two_fresh_property_sessions_each_consume_one_q():
             )
             == "quit"
         )
-        assert fake.onekey_calls == 1
+        assert fake.getkey_calls == 1
+        assert fake.onekey_calls == 0
         assert fake.keypressed_reads == 1
 
 
@@ -236,6 +249,36 @@ def test_raw_output_is_ascii_and_uses_rwrite():
     fake = PropertyMystic(True, ["Q"])
     MysticTerminalAdapter(fake).write_raw("A\N{BOX DRAWINGS LIGHT VERTICAL}B")
     assert fake.output == ["A?B"]
+
+
+def test_event_loop_rejects_onekey_only_api():
+    class OnKeyOnly:
+        keypressed = True
+
+        def onekey(self, keys, echo):
+            del keys, echo
+            raise AssertionError("onekey must not consume radar events")
+
+    with pytest.raises(MysticInputError, match="getkey"):
+        MysticTerminalAdapter(OnKeyOnly()).read_key()
+
+
+def test_mpy_main_returns_none_and_falls_through_to_end():
+    path = Path(__file__).parents[1] / "integrations" / "mystic" / "ansiradar.mpy"
+    tree = ast.parse(path.read_text())
+    main = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+    returns = [node for node in ast.walk(main) if isinstance(node, ast.Return)]
+    assert len(returns) == 1
+    assert isinstance(returns[0].value, ast.Constant)
+    assert returns[0].value.value is None
+    source = path.read_text()
+    assert "logging.info(\"mpy_end\")" in source
+    assert "sys.exit" not in source
+    assert "bbs.shutdown" not in source
 
 
 def test_source_startup_failure_is_controlled_by_frontend(tmp_path):

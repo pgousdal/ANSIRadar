@@ -88,17 +88,35 @@ refreshes the source. Enter, Left, Right, and Tab currently do nothing.
 
 Mystic documents `keypressed` as a boolean property, not a function. The
 adapter supports that real property and also tolerates method-style fakes used
-by tests. When input is available it calls the documented
-`onekey(keylist, echo)` with `echo=False`; Mystic's documented case-insensitive
-matching makes the required controls work without raw escape parsing. Arrow
-semantics are not claimed. `J`/`K` are the reliable next/previous controls.
+by tests. For the nonblocking radar loop, when input is available it calls
+`getkey()` exactly once to consume the queued character. `onekey(keylist,
+echo)` is intentionally not used here because it is a blocking constrained
+prompt and real Mystic showed that combining it with `keypressed` waits for a
+second physical key. Arrow semantics are not claimed. `J`/`K` are the reliable
+next/previous controls.
+
+## Getkey Probe
+
+The minimal probe at
+`integrations/mystic/tools/keyprobe.mpy` uses only `keypressed` and `getkey`.
+Copy it to the Mystic script directory and run it with a GZ menu entry whose
+data is `/home/mystic/doors/ansiradar/keyprobe.mpy`. Press keys followed by Q;
+inspect `/home/mystic/doors/ansiradar/keyprobe.log` for timestamps, raw values,
+types, and representations. It does not use `onekey`, stdin, sockets, or
+terminal modes.
 
 ## Logging and Errors
 
 The default local log is `/home/mystic/doors/ansiradar/mystic.log`. It records
-startup, key actions, and exceptions, but never passwords or user data. Startup
+startup, key availability transitions, raw `getkey` values, key actions,
+`mpy_end`, and exceptions, but never passwords or user data. Startup
 and rendering failures display a short ANSI-safe message and return to Mystic;
 the traceback is logged only.
+
+On normal quit, `run_mystic()` restores only `ESC[0m` and `ESC[?25h`. The GZ
+wrapper calls `main()` for side effects, logs `mpy_end`, and reaches EOF; it
+does not return an integer, raise `SystemExit`, call `bbs.shutdown()`, or close
+any Mystic-owned connection.
 
 ## Troubleshooting
 

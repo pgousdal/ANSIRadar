@@ -1,0 +1,36 @@
+"""Minimal Mystic getkey probe for GZ execution on Mystic 1.12 A48."""
+
+import logging
+import time
+
+import mystic_bbs as bbs
+
+LOG_PATH = "/home/mystic/doors/ansiradar/keyprobe.log"
+
+
+def main():
+    logging.basicConfig(
+        filename=LOG_PATH,
+        level=logging.INFO,
+        format="%(asctime)s %(message)s",
+    )
+    logging.info("keyprobe_start")
+    while True:
+        if bbs.keypressed:
+            stamp = time.time()
+            value = bbs.getkey()
+            logging.info(
+                "key_available=True timestamp=%r raw=%r type=%s repr=%r",
+                stamp,
+                value,
+                type(value).__name__,
+                repr(value),
+            )
+            if str(value).upper() == "Q":
+                break
+        time.sleep(0.05)
+    logging.info("keyprobe_end")
+
+
+main()
+logging.info("mpy_end")

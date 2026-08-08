@@ -40,12 +40,13 @@ def main():
         receiver_lon=lon,
         poll_interval=config.poll_interval,
     )
-    return run_mystic(
+    run_mystic(
         bbs,
         engine,
         config,
         log=lambda action: logging.getLogger("ansiradar.mystic").info(action),
     )
+    return None
 
 
 try:
@@ -56,6 +57,7 @@ try:
     )
     logging.info("startup")
     main()
+    logging.info("mpy_end")
 except SystemExit as error:
     logging.error("system_exit code=%r", error.code)
 except Exception:
