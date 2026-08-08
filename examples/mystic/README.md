@@ -1,7 +1,7 @@
 # Mystic example
 
 `ansiradar-door.sh` is a working-directory-independent wrapper for Mystic
-Linux. Install the wheel at `/opt/ansiradar/venv`, ensure the BBS user can
+Linux. Install the wheel at `/home/mystic/doors/ansiradar/venv`, ensure the BBS user can
 execute it, and configure the Mystic menu entry to pass the node-specific
 `DOOR32.SYS` path as its first argument.
 

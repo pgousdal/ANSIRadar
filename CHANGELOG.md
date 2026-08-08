@@ -1,12 +1,9 @@
 # Changelog
 
-## M5
+## Unreleased
 
-- Harden the standalone C99 80x25 radar for classic ANSI/CP437 terminals.
-- Add strict 80x25 clipping, aspect-correct projection, deterministic collision
-  priority, compact status/table layout, and bounded detail/help overlays.
-- Add source refresh pacing, stale-source indication, character profiles, and
-  expanded deterministic C coverage.
+- Move the standalone C99 edition to `pgousdal/ANSIRadar-C`.
+- Keep this repository focused on the Python Mystic/ADS-B runtime.
 
 ## 0.5.0
 

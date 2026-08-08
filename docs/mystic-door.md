@@ -1,6 +1,6 @@
 # Mystic BBS Door
 
-ANSIRadar M4 supports Mystic BBS on Linux through the descriptor/socket mode
+ANSIRadar supports Mystic BBS on Linux through the descriptor/socket mode
 described by an 11-line `DOOR32.SYS`. It does not implement other BBS dropfiles,
 listen for Telnet, or initiate a network connection. Mystic must pass an already
 connected socket descriptor using communication type `2`.
@@ -10,8 +10,8 @@ connected socket descriptor using communication type `2`.
 Install the wheel in a stable virtual environment owned by the BBS service:
 
 ```console
-python3 -m venv /opt/ansiradar/venv
-/opt/ansiradar/venv/bin/python -m pip install dist/ansiradar-0.5.0-py3-none-any.whl
+python3 -m venv /home/mystic/doors/ansiradar/venv
+/home/mystic/doors/ansiradar/venv/bin/python -m pip install dist/ansiradar-0.5.0-py3-none-any.whl
 ```
 
 The BBS user must be able to execute the environment and read the installed
@@ -26,7 +26,7 @@ configuration. Copy it to a root-owned or otherwise protected directory and
 adjust the absolute paths for the installation.
 
 ```console
-/opt/ansiradar/bin/ansiradar-door.sh /path/to/DOOR32.SYS
+/home/mystic/doors/ansiradar/ansiradar-door.sh /path/to/DOOR32.SYS
 ```
 
 Mystic menu command syntax varies by installation. Configure the menu entry to
@@ -87,9 +87,17 @@ ansiradar radar --source replay --replay-file tests/fixtures/radar-replay.jsonl 
 
 The project tests DOOR32 parsing, descriptor ownership, partial/fragmented
 input, Telnet IAC filtering, disconnects, time-left, idle limits, and two
-independent runtime instances without Mystic or public networking. A real
-Mystic, SyncTERM, or two-node integration test is not claimed unless run by the
-operator.
+independent runtime instances without public networking.
+
+Verified manually on:
+
+- Mystic BBS on Linux
+- `DOOR32.SYS` descriptor/socket mode
+- SyncTERM
+
+The practical integration survived normal idle periods, EAGAIN/EWOULDBLOCK,
+repeated keyboard input, and normal `q` exit. A two-node production deployment
+was not used as a quality gate for every change.
 
 ## Exit codes
 

@@ -22,9 +22,8 @@ DOOR32 path is parsed before caller output, the supplied descriptor is duplicate
 for ownership safety, and `BBSTerminalProfile` performs explicit CP437/ASCII/
 Unicode encoding without local TTY probing.
 
-M5 keeps that Python Mystic transport/runtime as the production DOOR32 path and
-hardens the separate C99 `ansiradar80` path as a classic 80x25 renderer. The C
-provider table returns normalized aircraft to a virtual screen; it has no
-knowledge of DOOR32 or Python. This deliberately avoids introducing a second
-native C DOOR32 implementation while allowing the C renderer to be tested
-independently with files and CSV replay.
+The Python edition is the maintained implementation in this repository. Its
+local interactive mode and Mystic door mode share the transport-neutral radar
+runtime while keeping source I/O, normalized observations, track state, and
+rendering separated. The standalone C99 edition is maintained in the separate
+`pgousdal/ANSIRadar-C` repository.

@@ -9,8 +9,3 @@ toggle help. Enter has no action.
 Door mode decodes these keys from transport bytes rather than termios. ANSI
 arrow sequences may be fragmented across reads; bounded Telnet IAC negotiation
 bytes are ignored defensively and are never rendered as keys.
-
-The standalone C 80x25 edition uses the same BBS-oriented set where applicable:
-arrows select, `+`/`-` zoom, Tab cycles sort, Space keeps the receiver-centered
-view, Enter opens details, `L` toggles list mode, `H` opens help, `Esc` closes an
-overlay, and `Q` quits.
