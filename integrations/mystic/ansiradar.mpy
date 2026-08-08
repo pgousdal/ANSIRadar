@@ -1,0 +1,63 @@
+"""Mystic GZ entry point for the native embedded-Python integration."""
+
+import logging
+import os
+import sys
+
+REPOSITORY_SRC = "/home/mystic/doors/ansiradar/site-packages"
+LOG_PATH = "/home/mystic/doors/ansiradar/mystic.log"
+if REPOSITORY_SRC not in sys.path:
+    sys.path.insert(0, REPOSITORY_SRC)
+
+import mystic_bbs as bbs
+
+
+def _env(name, default):
+    return os.environ.get(name, default)
+
+
+def main():
+    from ansiradar.mystic import MysticConfig, run_mystic
+    from ansiradar.mystic import build_mystic_engine
+    from ansiradar.sources import SourceSpec
+
+    source = _env("ANSIRADAR_SOURCE", "file")
+    endpoint = _env("ANSIRADAR_FILE", "/home/mystic/doors/data/aircraft.json")
+    lat = float(_env("ANSIRADAR_RECEIVER_LAT", "58.662"))
+    lon = float(_env("ANSIRADAR_RECEIVER_LON", "6.717"))
+    config = MysticConfig(range_nm=float(_env("ANSIRADAR_RANGE_NM", "100")))
+    spec = SourceSpec(
+        kind=source,
+        file=endpoint if source == "file" else None,
+        url=endpoint if source == "url" else None,
+        replay_file=endpoint if source == "replay" else None,
+    )
+    engine, radar_source = build_mystic_engine(
+        spec,
+        receiver_lat=lat,
+        receiver_lon=lon,
+        poll_interval=config.poll_interval,
+    )
+    try:
+        return run_mystic(
+            bbs,
+            engine,
+            config,
+            log=lambda action: logging.getLogger("ansiradar.mystic").info(action),
+        )
+    finally:
+        close = getattr(radar_source, "close", None)
+        if close is not None:
+            close()
+
+
+try:
+    logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(message)s")
+    logging.info("startup")
+    main()
+except Exception as error:
+    try:
+        logging.exception("controlled failure")
+        bbs.rwrite("\x1b[2J\x1b[HANSIRadar could not start. Check mystic.log.\x1b[0m")
+    except Exception:
+        pass

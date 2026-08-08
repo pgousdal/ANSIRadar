@@ -21,12 +21,23 @@ def _style(cell: Cell, color: bool) -> str:
 
 
 def serialize_full(
-    buffer: ScreenBuffer, *, color: bool = False, clear: bool = True
+    buffer: ScreenBuffer,
+    *,
+    color: bool = False,
+    clear: bool = True,
+    positioned: bool = False,
 ) -> str:
     prefix = "\x1b[2J\x1b[H" if clear else "\x1b[H"
-    body = "\n".join(
-        "".join(_style(cell, color) + cell.char for cell in row) for row in buffer.cells
-    )
+    rows = [
+        "".join(_style(cell, color) + cell.char for cell in row)
+        for row in buffer.cells
+    ]
+    if positioned:
+        body = "".join(
+            f"\x1b[{index + 1};1H{row}" for index, row in enumerate(rows)
+        )
+    else:
+        body = "\n".join(rows)
     return prefix + body + "\x1b[0m"
 
 
