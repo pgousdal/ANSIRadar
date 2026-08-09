@@ -132,7 +132,8 @@ def build_mystic_engine(
     poll_interval: float = 2.0,
     log: Callable[[str], None] | None = None,
     stop_after: str | None = None,
-) -> tuple[RadarEngine | None, AircraftSource]:
+    source_stop_after: str | None = None,
+) -> tuple[RadarEngine | None, AircraftSource | None]:
     """Build and seed one engine, with an opt-in constructor bisect probe.
 
     ``stop_after`` is diagnostic-only. It returns immediately after one of
@@ -148,9 +149,17 @@ def build_mystic_engine(
     try:
         if log is not None:
             log("create_source_start")
-        source = build_source(spec)
+        source: AircraftSource | None
+        if source_stop_after is None:
+            source = build_source(spec)
+        else:
+            source = build_source(spec, stop_after=source_stop_after)
+        if source is None:
+            return None, None
         if log is not None:
             log("create_source_done")
+        if source_stop_after == "file_construct":
+            return None, source
         if stage("source"):
             return None, source
         if log is not None:

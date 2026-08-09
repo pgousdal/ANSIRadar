@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, overload
 
 from ansiradar.sources.base import AircraftSource, UnsupportedSource
 
@@ -61,18 +61,42 @@ def validate_spec(spec: SourceSpec) -> None:
         raise UnsupportedSource("maximum aircraft count must be positive")
 
 
+@overload
 def build_source(
     spec: SourceSpec,
     *,
     client: httpx.Client | None = None,
-) -> AircraftSource:
+) -> AircraftSource: ...
+
+
+@overload
+def build_source(
+    spec: SourceSpec,
+    *,
+    client: httpx.Client | None = None,
+    stop_after: str,
+) -> AircraftSource | None: ...
+
+
+def build_source(
+    spec: SourceSpec,
+    *,
+    client: httpx.Client | None = None,
+    stop_after: str | None = None,
+) -> AircraftSource | None:
     validate_spec(spec)
+    if stop_after == "validate":
+        return None
     logging.getLogger("ansiradar.resources").info(
         "creating radar source kind=%s", spec.kind
     )
+    if stop_after == "logger":
+        return None
     if spec.kind == "url":
         from ansiradar.sources.url import UrlSource
 
+        if stop_after == "file_import":
+            return None
         return UrlSource(
             spec.url,  # type: ignore[arg-type]
             timeout=spec.timeout,
@@ -83,11 +107,18 @@ def build_source(
     if spec.kind == "replay":
         from ansiradar.replay import ReplaySource
 
+        if stop_after == "file_import":
+            return None
         return ReplaySource(spec.replay_file)  # type: ignore[arg-type]
     from ansiradar.sources.file import FileSource
 
-    return FileSource(
+    if stop_after == "file_import":
+        return None
+    source = FileSource(
         spec.file,  # type: ignore[arg-type]
         max_bytes=spec.max_bytes,
         max_aircraft=spec.max_aircraft,
     )
+    if stop_after == "file_construct":
+        return source
+    return source

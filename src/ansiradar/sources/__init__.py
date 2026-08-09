@@ -20,12 +20,17 @@ from ansiradar.sources.registry import (
 )
 
 if TYPE_CHECKING:
+    from ansiradar.sources.file import FileSource
     from ansiradar.sources.readsb import ReadsbSource
     from ansiradar.sources.url import UrlSource
 
 
 def __getattr__(name: str) -> object:
     """Load optional network-backed source classes only when explicitly used."""
+    if name == "FileSource":
+        from ansiradar.sources.file import FileSource
+
+        return FileSource
     if name == "ReadsbSource":
         from ansiradar.sources.readsb import ReadsbSource
 

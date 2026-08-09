@@ -81,6 +81,12 @@ For constructor teardown bisecting on Mystic, set
 stage and returns to Mystic without entering the radar loop. Run each value in
 a fresh GZ invocation and identify the first value that disconnects.
 
+For the second-level file-source bisect, set
+`ANSIRADAR_MYSTIC_SOURCE_STOP_AFTER` to `validate`, `logger`, `file_import`,
+or `file_construct`. The standalone
+`integrations/mystic/tools/sourceprobe.mpy` performs the same four operations
+without constructing the radar engine.
+
 The renderer defaults to 80x25. Frames use explicit cursor positioning for
 every full refresh, clear the screen, and contain no row separators. The
 nominal screen is 80x25, but Mystic uses a conservative 79x24 drawing area:

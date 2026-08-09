@@ -1,0 +1,37 @@
+"""Standalone Mystic probe for the file-source construction stages."""
+
+import os
+
+import mystic_bbs as bbs
+
+
+def main():
+    operation = os.environ.get("ANSIRADAR_SOURCE_PROBE", "logger")
+    if operation == "validate":
+        from ansiradar.sources import SourceSpec, validate_spec
+
+        validate_spec(SourceSpec(kind="file", file="/home/mystic/doors/data/aircraft.json"))
+    elif operation == "logger":
+        import logging
+
+        logging.getLogger("ansiradar.resources").info("test")
+    elif operation == "file_import":
+        from ansiradar.sources.file import FileSource
+
+        del FileSource
+    elif operation == "file_construct":
+        from ansiradar.sources.file import FileSource
+
+        source = FileSource("/home/mystic/doors/data/aircraft.json")
+    else:
+        raise ValueError("unknown ANSIRADAR_SOURCE_PROBE operation")
+
+    while True:
+        if bbs.keypressed:
+            key, extended = bbs.getkey()
+            del extended
+            if key.lower() == "q":
+                break
+
+
+main()

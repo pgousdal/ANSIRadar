@@ -42,6 +42,7 @@ def main():
     )
     resource_log = lambda event: logging.getLogger("ansiradar.mystic").info(event)
     build_stop_after = os.environ.get("ANSIRADAR_MYSTIC_BUILD_STOP_AFTER")
+    source_stop_after = os.environ.get("ANSIRADAR_MYSTIC_SOURCE_STOP_AFTER")
     engine, _radar_source = build_mystic_engine(
         spec,
         receiver_lat=lat,
@@ -49,10 +50,12 @@ def main():
         poll_interval=config.poll_interval,
         log=resource_log,
         stop_after=build_stop_after,
+        source_stop_after=source_stop_after,
     )
-    if build_stop_after:
+    if build_stop_after or source_stop_after:
         logging.getLogger("ansiradar.mystic").info(
-            "build_probe_return stage=%s", build_stop_after
+            "build_probe_return stage=%s",
+            build_stop_after or source_stop_after,
         )
     else:
         run_mystic(
