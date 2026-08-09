@@ -130,20 +130,77 @@ def build_mystic_engine(
     receiver_lat: float,
     receiver_lon: float,
     poll_interval: float = 2.0,
-) -> tuple[RadarEngine, AircraftSource]:
-    """Build and seed one engine, turning source startup into a controlled error."""
+    log: Callable[[str], None] | None = None,
+    stop_after: str | None = None,
+) -> tuple[RadarEngine | None, AircraftSource]:
+    """Build and seed one engine, with an opt-in constructor bisect probe.
+
+    ``stop_after`` is diagnostic-only. It returns immediately after one of
+    ``source``, ``source_poll``, ``poller``, ``tracks``, ``engine``, ``seed``,
+    or ``apply`` so an embedded run can test object lifetime one stage at a
+    time. Normal callers leave it unset and receive a fully initialized engine.
+    """
+    def stage(name: str) -> bool:
+        if log is not None:
+            log(f"build_{name}")
+        return stop_after == name
+
     try:
+        if log is not None:
+            log("create_source_start")
         source = build_source(spec)
+        if log is not None:
+            log("create_source_done")
+        if stage("source"):
+            return None, source
+        if log is not None:
+            log("source_poll_start")
         startup = source.poll()
+        if log is not None:
+            log("source_poll_done")
+        if stage("source_poll"):
+            return None, source
+        if log is not None:
+            log("create_poller_start")
+        poller = SourcePoller(source, poll_interval=poll_interval)
+        if log is not None:
+            log("create_poller_done")
+        if stage("poller"):
+            return None, source
+        if log is not None:
+            log("create_tracks_start")
+        tracks = TrackManager()
+        if log is not None:
+            log("create_tracks_done")
+        if stage("tracks"):
+            return None, source
+        if log is not None:
+            log("create_engine_start")
         engine = RadarEngine(
-            SourcePoller(source, poll_interval=poll_interval),
-            TrackManager(),
+            poller,
+            tracks,
             receiver_lat=receiver_lat,
             receiver_lon=receiver_lon,
             max_age=60,
         )
+        if log is not None:
+            log("create_engine_done")
+        if stage("engine"):
+            return engine, source
+        if log is not None:
+            log("seed_engine_start")
         engine.poller.seed(startup)
+        if log is not None:
+            log("seed_engine_done")
+        if stage("seed"):
+            return engine, source
+        if log is not None:
+            log("apply_startup_start")
         engine.apply_manual(startup)
+        if log is not None:
+            log("apply_startup_done")
+        if stage("apply"):
+            return engine, source
         return engine, source
     except Exception as error:
         close = locals().get("source")

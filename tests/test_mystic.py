@@ -438,6 +438,34 @@ def test_source_startup_failure_is_controlled_by_frontend(tmp_path):
         )
 
 
+def test_mystic_engine_constructor_bisect_stops_after_each_stage():
+    stages = (
+        "source",
+        "source_poll",
+        "poller",
+        "tracks",
+        "engine",
+        "seed",
+        "apply",
+    )
+    for stop_after in stages:
+        events = []
+        built, source = build_mystic_engine(
+            SourceSpec(kind="file", file=str(FIXTURE)),
+            receiver_lat=58.0,
+            receiver_lon=6.0,
+            log=events.append,
+            stop_after=stop_after,
+        )
+        assert f"build_{stop_after}" in events
+        if stop_after in {"source", "source_poll", "poller", "tracks"}:
+            assert built is None
+        else:
+            assert built is not None
+            built.close()
+        source.close()
+
+
 def test_mystic_closes_every_resource_created_by_source_constructor(monkeypatch):
     created = []
 

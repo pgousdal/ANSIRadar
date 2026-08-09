@@ -75,6 +75,12 @@ importing its `httpx` network backend causes embedded interpreter teardown to
 disconnect the Telnet session. URL sources remain supported in normal CLI
 usage.
 
+For constructor teardown bisecting on Mystic, set
+`ANSIRADAR_MYSTIC_BUILD_STOP_AFTER` to one of `source`, `source_poll`,
+`poller`, `tracks`, `engine`, `seed`, or `apply`. The wrapper logs each build
+stage and returns to Mystic without entering the radar loop. Run each value in
+a fresh GZ invocation and identify the first value that disconnects.
+
 The renderer defaults to 80x25. Frames use explicit cursor positioning for
 every full refresh, clear the screen, and contain no row separators. The
 nominal screen is 80x25, but Mystic uses a conservative 79x24 drawing area:
